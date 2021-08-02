@@ -113,7 +113,8 @@ yout = zeros(chunk,length(y));
 k=1;
 tout(k) = t;
 yout(k,:) = y.';
-%tau = tol * max(norm(y, 'inf'), 1); % 'inf' 「norm」のオプション。行列の和の最大絶対値
+%tau = tol * max(norm(y, 'inf'), 1); % 'inf'
+%「norm」のオプション。行列の和の最大絶対値 未使用なのでコメントアウト。
 
 
 %%% graph area begin from here.

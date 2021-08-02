@@ -1,5 +1,7 @@
 function ydot = yderivs_doubpend(y,betavec);
 
+% 要するに
+
 % All code by Mariano Garcia (msg5@cornell.edu), 1998
 % Some documentation of sorts and accompanying figures can
 % be found in chaps 2 and 3 of my thesis, which can be downloaded from
@@ -17,12 +19,12 @@ function ydot = yderivs_doubpend(y,betavec);
 % This file contains the derivatives of the simplest walker.
 
 
-beta = betavec(1);
+beta = betavec(1); % Runge-Kutta-Fehlberg Method の係数行列が入っています。
 gam = betavec(2);
 g = betavec(3);
 l = betavec(4);
 
-
+% prepare for define Garcia's equations. 
 cO1 = cos(y(1));
 sO1 = sin(y(1));
 
@@ -32,14 +34,18 @@ sO2 = sin(y(2));
 sO1g = sin(y(1)-gam);
 sO12g=sin(y(1)+y(2)-gam);
 
+% define Garcia's equation(upper Matrix p3).
+% 左辺第1項
 M(1,1)=1+2*beta*(1+cO2);
 M(1,2)=beta*(1+cO2);
 M(2,1)=1+cO2;
 M(2,2)=1;
 
+% 左辺第2項
 V(1)=-beta*sO2*y(4)*(2*y(3)+y(4));
 V(2)=sO2*y(3)^2;
 
+% 左辺第3項
 G(1)=-g/l*(beta*sO12g+sO1g*(1+beta));
 G(2)=-g/l*sO12g;
 
