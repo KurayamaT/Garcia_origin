@@ -25,16 +25,16 @@ beta  = [ [    1      0      0     0      0    0]/4
           [-6080  41040 -28352  9295  -5643    0]/20520 ]';
 gamma = [ [902880  0  3953664  3855735  -1371249  277020]/7618050
           [ -2090  0    22528    21970    -15048  -27360]/752400 ]';
-pow = 1/5; %累乗(power)
+pow = 1/5; % 累乗(power)
 f = zeros(length(y0),6);
 
 if nargin < 5, tol = 0.001; end % nargin = Number of function input arguments
 t = t0;
 
 hmax = (tfinal - t)/16;
-h = hmax/8;
+h = hmax/8; % h → xの変化量なのですが
 y = y0(:);
-chunk = 128;
+chunk = 128; % [chunk]塊？？？
 tout = zeros(chunk,1);
 yout = zeros(chunk,length(y));
 k=1;
@@ -42,7 +42,8 @@ tout(k) = t;
 yout(k,:) = y.';
 tau = tol * max(norm(y, 'inf'), 1);
 
-clf reset;
+%%% graph area begin from here.
+clf reset; % reset figure.
 
 axis([-2 2 -2 2]);
 
@@ -166,7 +167,7 @@ while  ((y(2)+h*y(4) >= pi-2*(y(1)+h*y(3))) ) ...
       if delta ~= 0.0
       h = min(hmax, 0.9*h*(tau/delta)^pow);
      end
-end;
+end
 
 if abs(y(1)) > pi/2
 t=tfinal
