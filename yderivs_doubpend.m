@@ -19,7 +19,7 @@ function ydot = yderivs_doubpend(y,betavec);
 % This file contains the derivatives of the simplest walker.
 
 
-beta = betavec(1); % Runge-Kutta-Fehlberg Method の係数行列が入っています。
+beta = betavec(1); % betavec(1) >>Runge-Kutta-Fehlberg Method の係数行列が入っています。
 gam = betavec(2);
 g = betavec(3);
 l = betavec(4);
@@ -51,14 +51,12 @@ G(2)=-g/l*sO12g;
 
 %-V'-G'
 
-Oddot=M\(-V'-G');
+Oddot=M\(-V'-G'); % probably Oddot means θ’’？？？
 
-
-ydot(1)=y(3);
-ydot(2)=y(4);
-ydot(3)=Oddot(1);
-ydot(4)=Oddot(2);
-
+ydot(1)=y(3);     %θ’
+ydot(2)=y(4);     %φ’
+ydot(3)=Oddot(1); %θ’’
+ydot(4)=Oddot(2); %φ’’
 
 ydot = ydot';
 
