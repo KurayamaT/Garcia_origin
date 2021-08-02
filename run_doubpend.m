@@ -93,13 +93,16 @@ betavec=[beta,gam,g,l];
 % https://maths.cnam.fr/IMG/pdf/RungeKuttaFehlbergProof.pdf
 % http://ruina.tam.cornell.edu/research/topics/locomotion_and_robotics/
 
+%ルンゲ＝クッタ＝フェールベルグ法のブッチャー配列
+%https://ja.wikipedia.org/wiki/%E3%83%AB%E3%83%B3%E3%82%B2%EF%BC%9D%E3%82%AF%E3%83%83%E3%82%BF%E6%B3%95%E3%81%AE%E3%83%AA%E3%82%B9%E3%83%88#Cash-Karp%E6%B3%95
 beta  = [ [    1      0      0     0      0    0]/4
           [    3      9      0     0      0    0]/32
           [ 1932  -7200   7296     0      0    0]/2197
           [ 8341 -32832  29440  -845      0    0]/4104
           [-6080  41040 -28352  9295  -5643    0]/20520 ]';
 gamma = [ [902880  0  3953664  3855735  -1371249  277020]/7618050
-          [ -2090  0    22528    21970    -15048  -27360]/752400 ]';
+          [ -2090  0    22528    21970    -15048  -27360]/752400 ]';%最終的に二列です
+      %上記の係数にはルンゲ＝クッタ＝フェールベルグ法の上4段と下2段がそのまま含有されています
 pow = 1/5; % 累乗(power)
 f = zeros(length(y0),6); % k6までやるってこと？。
 
@@ -143,7 +146,7 @@ drawnow;
 %%%%%%%%%%%%%%%%%%%%%  Main Loop Begins  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 while (t < tfinal)
 
-while  ((y(2)+h*y(4) <= pi-2*(y(1)+h*y(3))))...
+while  ((y(2)+h*y(4) <= pi-2*(y(1)+h*y(3))))...%不等号が逆の時
  & t < tfinal & abs(y(1)) < pi/2 
          % Compute the slopes
 	 f(:,1) = yderivs_doubpend(y,betavec);
@@ -158,13 +161,11 @@ while  ((y(2)+h*y(4) <= pi-2*(y(1)+h*y(3))))...
         %http://ri2t.kyushu-u.ac.jp/~watanabe/RESERCH/MANUSCRIPT/KOHO/CONVERGE/converge.pdf
    delta = norm(h*f*gamma(:,2),'inf');% 'inf'「norm」のオプション。行列の和の最大絶対値
    tau = tol*max(norm(y,'inf'),1.0);
-        %誤差がτ以下になったら計算終了！！！
-
 
         % Update the solution only if the error is acceptable
         ts = t;
         ys = y;
-        if delta <= tau %誤差がτ以下になったら計算終了！！！
+        if delta <= tau %誤差がτ以下ならOK！！！
   
       	   t = t + h;
 	y = y + h*f*gamma(:,1);
@@ -199,11 +200,11 @@ while  ((y(2)+h*y(4) <= pi-2*(y(1)+h*y(3))))...
      end
 end;
 
-if abs(y(1)) > pi/2 
+if abs(y(1)) > pi/2 % θが90超えた時は計算終了
 t=tfinal
 end;
 
-while  ((y(2)+h*y(4) >= pi-2*(y(1)+h*y(3))) ) ...
+while  ((y(2)+h*y(4) >= pi-2*(y(1)+h*y(3))) ) ...%不等号が逆の時
  & t < tfinal & abs(y(1)) < pi/2
          % Compute the slopes
          f(:,1) = yderivs_doubpend(y,betavec);
