@@ -47,7 +47,8 @@ theta2dot =-theta1dot*(1-cos(2*theta1));
 
 y0 = [theta1 theta2 theta1dot theta2dot]
 
-tol = 1e-10; % 刻み幅　defaultは 1e-10
+tol = 1e-10; % where tol is the specified error control tolerance 論文では1e-12
+
 tfinal =10;  % 計算継続時間
 %tic
 [t,y]=int_doubpend(0,tfinal,tol,y0,beta,g,gam,l);
@@ -91,6 +92,7 @@ betavec=[beta,gam,g,l];
 % http://godfoot.world.coocan.jp/Runge-Kutta-Fehlberg.htm
 % https://maths.cnam.fr/IMG/pdf/RungeKuttaFehlbergProof.pdf
 % http://ruina.tam.cornell.edu/research/topics/locomotion_and_robotics/
+
 beta  = [ [    1      0      0     0      0    0]/4
           [    3      9      0     0      0    0]/32
           [ 1932  -7200   7296     0      0    0]/2197
@@ -99,22 +101,23 @@ beta  = [ [    1      0      0     0      0    0]/4
 gamma = [ [902880  0  3953664  3855735  -1371249  277020]/7618050
           [ -2090  0    22528    21970    -15048  -27360]/752400 ]';
 pow = 1/5; % 累乗(power)
-f = zeros(length(y0),6); % k6までやるってこと。
+f = zeros(length(y0),6); % k6までやるってこと？。
 
-if nargin < 5, tol = 0.001; end % nargin = Number of function input arguments
+if nargin < 5, tol = 0.001; end % nargin 入力引数の数。これが5つ以下の時はtol0.01ってどういう意味？
+% nargin = Number of function input arguments
 t = t0;
 
 hmax = (tfinal - t)/16;
-h = hmax/8; % h → xの変化量？
+h = hmax/8; % h → xの変化量、つかsampling間隔みたいなやつ？16で割って更に8で割るってどういうこと？あ！！！128か。だから128行なのか！！！
 y = y0(:);
-chunk = 128; % [chunk]塊？？？次に定義されてるtoutとyoutの行数だって。
+chunk = 128; % [chunk]toutとyoutの行数だって。このプログラムでは一歩行周期を128pointで差分しとる。
 tout = zeros(chunk,1);
 yout = zeros(chunk,length(y));
 k=1;
 tout(k) = t;
 yout(k,:) = y.';
-%tau = tol * max(norm(y, 'inf'), 1); % 'inf'
-%「norm」のオプション。行列の和の最大絶対値 未使用なのでコメントアウト。
+%tau = tol * max(norm(y, 'inf'), 1); 
+% 'inf'「norm」のオプション。行列の和の最大絶対値 未使用なのでコメントアウト。
 
 
 %%% graph area begin from here.
@@ -144,20 +147,25 @@ while  ((y(2)+h*y(4) <= pi-2*(y(1)+h*y(3))))...
  & t < tfinal & abs(y(1)) < pi/2 
          % Compute the slopes
 	 f(:,1) = yderivs_doubpend(y,betavec);
+     % yderivs_doubpendを使って5次のルンゲクッタをしとる
    	    for j = 1:5
-      	      f(:,j+1) = yderivs_doubpend(y+h*f*beta(:,j),betavec);
+      	      f(:,j+1) = yderivs_doubpend(y+h*f*beta(:,j),betavec);%2～6なので6次のルンゲクッタ。
    	    end
 
 
         % Estimate the error and the acceptable error
-   delta = norm(h*f*gamma(:,2),'inf');
+        % 誤差についてはこれを熟読する必要がある
+        %http://ri2t.kyushu-u.ac.jp/~watanabe/RESERCH/MANUSCRIPT/KOHO/CONVERGE/converge.pdf
+   delta = norm(h*f*gamma(:,2),'inf');% 'inf'「norm」のオプション。行列の和の最大絶対値
    tau = tol*max(norm(y,'inf'),1.0);
+        %誤差がτ以下になったら計算終了！！！
 
 
         % Update the solution only if the error is acceptable
         ts = t;
         ys = y;
-        if delta <= tau
+        if delta <= tau %誤差がτ以下になったら計算終了！！！
+  
       	   t = t + h;
 	y = y + h*f*gamma(:,1);
        	   k = k+1;

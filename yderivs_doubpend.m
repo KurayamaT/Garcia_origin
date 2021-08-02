@@ -1,6 +1,6 @@
 function ydot = yderivs_doubpend(y,betavec);
 
-% 要するに
+% 要するにRunge-Kutta-Fehlberg Methodを使って、導関数を導くためのプログラム
 
 % All code by Mariano Garcia (msg5@cornell.edu), 1998
 % Some documentation of sorts and accompanying figures can
