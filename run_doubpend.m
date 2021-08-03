@@ -12,16 +12,16 @@
 % Note that theta2 is the exterior angle between the
 % legs, not the same as phi in the ASME paper above.
 % theta2 = pi - phi
-
 % see the accompanying figure pointfoot.cartoon2.eps
-
 
 global graphics
 graphics=0;
 format long
 clf reset
 clear
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Define initial value %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % leg parameters
 l = 1;   % leg length
 m1 = 1;  % hip mass
@@ -46,15 +46,18 @@ theta2dot =-theta1dot*(1-cos(2*theta1));
 %theta2dot=-theta1dot*(1-cos(2*theta1));
 
 y0 = [theta1 theta2 theta1dot theta2dot]
-
 tol = 1e-10; % where tol is the specified error control tolerance 論文では1e-12
-
 tfinal =10;  % 計算継続時間
-%tic
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% start function calling %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 [t,y]=int_doubpend(0,tfinal,tol,y0,beta,g,gam,l);
-%toc
 
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% animation %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % plot output angles
 figure;hold on;
 plot(t,-y(:,1),t,pi-y(:,1)-y(:,2)); % y(:1)=θ y(:,2)=φ
@@ -67,25 +70,25 @@ plot(t,y(:,2)-pi+2.*y(:,1));
 figure;hold on;
 plot(t,cos(y(:,1))-cos(pi-y(:,1)-y(:,2)));
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% main function %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%%% main function %%%%
 % 以下の関数が実行されると、時間+関節角度（2つ）+角速度（2つ）が128行分、「toutおよびyout」として保存されます。
-% 「y」単体は、［theta1 theta2 theta1dot theta2dot］が入ってます。
+% 「y」単体は、［theta1 theta2 theta1dot theta2dot］が入ってる。
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% ルンゲ＝クッタ＝フェールベルグ法を用いた解の導出 %%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 function [tout,yout]=int_doubpend(t0,tfinal,tol,y0,beta,g,gam,l); % beta = 0, g = l = 1, gam = 0.009
 % kludge to run mex file- assumes g=l=1, stores [beta gamma] in BETA
 betavec=[beta,gam,g,l];
 % now there are two different betas floating around
 
 % Does forward integration for a "simplest" walker with
-% 2 DOF. 
-% 自由度2で前方積分します。
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%       C.B. Moler, 3-25-87, 10-5-91, 6-3-93.
-%       Copyright (c) 1984-93 by The MathWorks, Inc.
-%       Modified for walking simulations
-%       by Mariano Garcia (msg5@cornell.edu), 1996
-%%%%%%%%%%%%%%%%%%%%%%%%%% Program begins  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 2 DOF. >> 自由度2（変数2つ）で前方積分します。
+% 
 % Initialization
 % The Fehlberg coefficients:
 % https://ja.wikipedia.org/wiki/%E3%83%AB%E3%83%B3%E3%82%B2%EF%BC%9D%E3%82%AF%E3%83%83%E3%82%BF%E6%B3%95%E3%81%AE%E3%83%AA%E3%82%B9%E3%83%88
@@ -93,15 +96,15 @@ betavec=[beta,gam,g,l];
 % https://maths.cnam.fr/IMG/pdf/RungeKuttaFehlbergProof.pdf
 % http://ruina.tam.cornell.edu/research/topics/locomotion_and_robotics/
 
-%ルンゲ＝クッタ＝フェールベルグ法のブッチャー配列
+%ルンゲ＝クッタ＝フェールベルグ法のブッチャー配列を定義
 %https://ja.wikipedia.org/wiki/%E3%83%AB%E3%83%B3%E3%82%B2%EF%BC%9D%E3%82%AF%E3%83%83%E3%82%BF%E6%B3%95%E3%81%AE%E3%83%AA%E3%82%B9%E3%83%88#Cash-Karp%E6%B3%95
 beta  = [ [    1      0      0     0      0    0]/4
           [    3      9      0     0      0    0]/32
-          [ 1932  -7200   7296     0      0    0]/2197
+          [ 1932  -7200   7296     0      0    0]/2200
           [ 8341 -32832  29440  -845      0    0]/4104
-          [-6080  41040 -28352  9295  -5643    0]/20520 ]';
+          [-6080  41040 -28352  9295  -5643    0]/20520 ]'; % 最後に転置して5行
 gamma = [ [902880  0  3953664  3855735  -1371249  277020]/7618050
-          [ -2090  0    22528    21970    -15048  -27360]/752400 ]';%最終的に二列です
+          [ -2090  0    22528    21970    -15048  -27360]/752400 ]'; % 最後に転置して2行
       %上記の係数にはルンゲ＝クッタ＝フェールベルグ法の上4段と下2段がそのまま含有されています
 pow = 1/5; % 累乗(power)
 f = zeros(length(y0),6); % k6までやるってこと？。
@@ -150,15 +153,14 @@ while  ((y(2)+h*y(4) <= pi-2*(y(1)+h*y(3))))...%不等号が逆の時
  & t < tfinal & abs(y(1)) < pi/2 
          % Compute the slopes
 	 f(:,1) = yderivs_doubpend(y,betavec);
-     % yderivs_doubpendを使って5次のルンゲクッタをしとる
+     % yderivs_doubpendを使って5次のRKFを実施して差分方程式を得る。
    	    for j = 1:5
       	      f(:,j+1) = yderivs_doubpend(y+h*f*beta(:,j),betavec);%2～6なので6次のルンゲクッタ。
    	    end
 
-
-        % Estimate the error and the acceptable error
+        % Estimate the error and the acceptable error>>許容誤差を定義しておく
         % 誤差についてはこれを熟読する必要がある
-        %http://ri2t.kyushu-u.ac.jp/~watanabe/RESERCH/MANUSCRIPT/KOHO/CONVERGE/converge.pdf
+        % http://ri2t.kyushu-u.ac.jp/~watanabe/RESERCH/MANUSCRIPT/KOHO/CONVERGE/converge.pdf
    delta = norm(h*f*gamma(:,2),'inf');% 'inf'「norm」のオプション。行列の和の最大絶対値
    tau = tol*max(norm(y,'inf'),1.0);% 最大ノルムを求めている⇒計算をやめるための基準。
 
@@ -302,11 +304,11 @@ if t<tfinal
 
         drawnow;
   
-h=horig;
+h=horig; % oringin
 
 % now we hit strike. AMB about strike point gives
 
-
+% 次のstepのための初期条件をout
 y(3)=(y(3)*cos(2*y(1)))/(1+betavec(1)*(sin(2*y(1)))^2);
 y(4)=-y(3)*(1+cos(y(2)));
 
