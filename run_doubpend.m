@@ -160,7 +160,7 @@ while  ((y(2)+h*y(4) <= pi-2*(y(1)+h*y(3))))...%不等号が逆の時
         % 誤差についてはこれを熟読する必要がある
         %http://ri2t.kyushu-u.ac.jp/~watanabe/RESERCH/MANUSCRIPT/KOHO/CONVERGE/converge.pdf
    delta = norm(h*f*gamma(:,2),'inf');% 'inf'「norm」のオプション。行列の和の最大絶対値
-   tau = tol*max(norm(y,'inf'),1.0);
+   tau = tol*max(norm(y,'inf'),1.0);% 最大ノルムを求めている⇒計算をやめるための基準。
 
         % Update the solution only if the error is acceptable
         ts = t;
