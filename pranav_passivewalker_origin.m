@@ -1,6 +1,6 @@
 % PASSIVEWALKER simulates passive ramp walkers.
-% passivewalker(1) - simplest walker as a limiting case of a passive walker (Garcia et. al 1998)
-% passivewalker(2) - more general passive walker with round feet.
+% pranav_passivewalker_origin(1) - simplest walker as a limiting case of a passive walker (Garcia et. al 1998)
+% pranav_passivewalker_origin(2) - more general passive walker with round feet.
 % 
 % Needs ODE113, FSOLVE, INTERP1. 
 % If you find bugs in this code please mail, 
@@ -8,7 +8,7 @@
 % Last updated: 26 December 2009
 
 
-function passivewalker(flag)  
+function pranav_passivewalker_origin(flag)  
 
 clc
 clear all
@@ -26,7 +26,7 @@ if flag == 1
     %% M = hip mass, m = leg mass, I = leg inertia, l = leg length
     %%%%% To get results close to Garcia's walker increase M %%%%%%
     walker.M = 1000; walker.m = 1.0; walker.I = 0.00; walker.l = 1.0; walker.w = 0.0; 
-    walker.c = 1.0;  walker.r = 0.0; walker.g = 1.0; walker.gam = 0.009; 
+    walker.c = 1.0;  walker.r = 0.3; walker.g = 1.0; walker.gam = 0.009; 
     
 
     %%%% Initial State %%%%%
