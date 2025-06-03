@@ -3,8 +3,14 @@ function run_grid_search_from_gui()
 % parforによる並列処理で高速化、成功例をリアルタイム表示
 
     %% 範囲の取得
+    %% 範囲の取得
     if ~evalin('base', 'exist(''u1_range'', ''var'')')
-        error('先にgrid_search_gui_simple()を実行してください。');
+        fprintf('設定が見つかりません。GUIを起動します...\n');
+        grid_search_gui_simple();
+        
+        % ユーザーが設定を完了するまで待機
+        fprintf('GUIで設定を完了してから、もう一度 run_grid_search_from_gui を実行してください。\n');
+        return;
     end
     
     if evalin('base', 'exist(''q1_range'', ''var'')')
