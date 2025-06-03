@@ -1,5 +1,5 @@
 function grid_search_gui_simple()
-% 改良版GUI - 設定から計算実行まで一括で行う
+% 完全版GUI - 設定から計算実行まで一括で行う
 
     % Figure作成
     fig = figure('Position', [200 200 500 550], ...
@@ -377,7 +377,7 @@ function run_grid_search_calculation(ranges)
     assignin('base', 'successful_results', successful);
 end
 
-%% 個別評価関数
+%% 個別評価関数 - Copy_of_pranav_passivewalker_originの関数を使用
 function result = evaluate_single(z0, walker)
     result.q1 = z0(1); 
     result.u1 = z0(2);
@@ -388,25 +388,24 @@ function result = evaluate_single(z0, walker)
     result.max_angle = inf;
     
     try
-        % 固定点探索
+        % 固定点探索 - Copy_of_pranav_passivewalker_originから呼び出し
         options = optimset('TolFun',1e-12,'TolX',1e-12,'Display','off');
-        [zstar, ~, exitflag] = fsolve(@fixedpt, z0, options, walker);
+        [zstar, ~, exitflag] = fsolve(@Copy_of_pranav_passivewalker_origin.fixedpt, z0, options, walker);
         
         if exitflag == 1
             result.zstar = zstar;
             
-            % 安定性チェック
-            J = partialder(@onestep, zstar, walker);
+            % 安定性チェック - Copy_of_pranav_passivewalker_originから呼び出し
+            J = Copy_of_pranav_passivewalker_origin.partialder(@Copy_of_pranav_passivewalker_origin.onestep, zstar, walker);
             eigenvalues = eig(J);
             result.max_eig = max(abs(eigenvalues));
             
             if result.max_eig < 1
-                % 実際の歩行テスト
-                [z, ~] = onestep(z0, walker, 3);  % 3ステップで高速化
+                % 実際の歩行テスト - Copy_of_pranav_passivewalker_originから呼び出し
+                [z, ~] = Copy_of_pranav_passivewalker_origin.onestep(z0, walker, 3);
                 
                 % 転倒チェック（修正版）
                 result.max_angle = max(abs(z(:,1)));
-                result.min_height = 0;  % デフォルト値
                 result.success = (result.max_angle < pi/2);  % 角度のみで判定
             end
         end
