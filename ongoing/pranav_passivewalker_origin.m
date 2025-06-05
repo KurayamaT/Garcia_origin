@@ -6,17 +6,24 @@
 % If you find bugs in this code please mail, 
 % Pranav A. Bhounsule, pab47@cornell.edu
 % Last updated: 26 December 2009
+%%%
+%使い方
 
+% % 初期値を指定して実行
+% pranav_passivewalker_origin(1, [0.2, -0.25, 0.35, -0.4])
 
-function pranav_passivewalker_origin(flag)  
+function pranav_passivewalker_origin(flag, z0_input)
 
 clc
-clear all
 close all
 format long
 
+% 引数の処理
 if nargin == 0
-    flag = 1; %simulates simplest walker by default
+    flag = 1; % デフォルトは最も単純なウォーカー
+    z0_input = []; % デフォルト初期値を使用
+elseif nargin == 1
+    z0_input = []; % デフォルト初期値を使用
 end
 
 if flag == 1
@@ -30,12 +37,22 @@ if flag == 1
     
 
     %%%% Initial State %%%%%
-    q1 = 0.2; u1 = -0.2;
-    q2 = 0.4; u2 = -0.3;
-
-    z0 = [q1 u1 q2 u2];
-    %%% Root finding will give this stable root 
-    %zstar = [0.200161072169750  -0.199906060087682   0.400322144339512  -0.015805473227965];
+    if isempty(z0_input)
+        % デフォルト初期値
+        q1 = 0.2; u1 = -0.2;
+        q2 = 0.4; u2 = -0.3;
+        z0 = [q1 u1 q2 u2];
+        fprintf('デフォルト初期値を使用: [%.3f, %.3f, %.3f, %.3f]\n', z0);
+    else
+        % ユーザー指定の初期値
+        if length(z0_input) ~= 4
+            error('初期値は4要素のベクトル [q1, u1, q2, u2] である必要があります');
+        end
+        z0 = z0_input;
+        fprintf('指定された初期値を使用: [%.3f, %.3f, %.3f, %.3f]\n', z0);
+    end
+        %%% Root finding will give this stable root 
+        %zstar = [0.200161072169750  -0.199906060087682   0.400322144339512  -0.015805473227965];
 
 else 
     %%  More General round feet walker with roots
