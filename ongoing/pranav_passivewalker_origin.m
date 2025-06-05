@@ -11,6 +11,7 @@
 
 % % 初期値を指定して実行
 % pranav_passivewalker_origin(1, [0.2, -0.25, 0.35, -0.4])
+%%%%% をzstarにすると固定点から開始。z0だと自分で設定した初期値から歩き始める
 
 function pranav_passivewalker_origin(flag, z0_input)
 
@@ -63,10 +64,20 @@ else
     walker.c = 0.5; walker.r = 0.2; walker.g = 1.0; walker.gam = 0.01; 
     
     %%%% Initial State %%%%%
-    q1 = 0.2; u1 = -0.3;
-    q2 = 0.4; u2 = -0.3;
-    
-    z0 = [q1 u1 q2 u2];
+    if isempty(z0_input)
+        % デフォルト初期値
+        q1 = 0.2; u1 = -0.3;
+        q2 = 0.4; u2 = -0.3;
+        z0 = [q1 u1 q2 u2];
+        fprintf('デフォルト初期値を使用: [%.3f, %.3f, %.3f, %.3f]\n', z0);
+    else
+        % ユーザー指定の初期値
+        if length(z0_input) ~= 4
+            error('初期値は4要素のベクトル [q1, u1, q2, u2] である必要があります');
+        end
+        z0 = z0_input;
+        fprintf('指定された初期値を使用: [%.3f, %.3f, %.3f, %.3f]\n', z0);
+    end
     %% Root finding will give this stable root 
     %zstar = [0.189472782205104  -0.239124222551699   0.378945564410209  -0.053691703909393];
     %%
@@ -92,21 +103,161 @@ end
 J=partialder(@onestep,zstar,walker);
 disp('EigenValues for linearized map are');
 eig(J)
- 
-%%%% Get data for all the steps %%%
-[z,t] = onestep(zstar,walker,steps);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%% Get data for all the steps %%%
+% %[z,t] = onestep(zstar,walker,steps);
+% %%%% 固定点からではなく、指定した初期値から開始する場合
+% [z,t] = onestep(z0,walker,steps);  % zstarをz0に変更
+% 
+% %%% Animate result %%%
+% disp('Animating...');
+% 
+% % 動画として保存する場合はコメントを外す
+% animate_and_save(t,z,walker,steps,fps);  
+% 
+% % 通常のアニメーション表示のみの場合
+% % animate_walker(t,z,walker,steps,fps);
+% 
+% %%% Plot data %%%
+% disp('Some plots...')
+% plot(t,z(:,1),'r',t,z(:,3),'b')
+% xlabel('time'); ylabel('Angle (rad)');
+% legend('Stance Angle','Swing Angle');
+% title('State variables vs time for passive walker');
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%% Get data for all the steps 2 %%%
+% より多くの歩数で収束過程を観察
+steps_long = 10;  % 収束を見るために歩数を増やす
+
+% ユーザーが指定した初期値から開始
+fprintf('\n指定した初期値からシミュレーション開始...\n');
+fprintf('初期値: [%.3f, %.3f, %.3f, %.3f]\n', z0);
+fprintf('固定点: [%.3f, %.3f, %.3f, %.3f]\n', zstar);
+fprintf('収束過程を観察するため、%d歩シミュレーションします。\n', steps_long);
+
+%%%%% ココをzstarにすると固定点から開始。z0だと自分で設定した初期値から歩き始める
+[z,t] = onestep(z0, walker, steps_long);  % z0から開始
 
 %%% Animate result %%%
 disp('Animating...');
-animate(t,z,walker,steps,fps);
+
+% 最初の10歩だけアニメーション（全体は長すぎるため）
+steps_to_animate = min(10, steps_long);
+% 各歩約100タイムステップと仮定していたが、実際のデータ長を確認
+max_frames = min(length(z), steps_to_animate*100);
+z_anim = z(1:max_frames,:);
+t_anim = t(1:max_frames);
+
+% 動画として保存する場合
+animate_and_save(t_anim, z_anim, walker, steps_to_animate, fps);  
 
 %%% Plot data %%%
-disp('Some plots...')
-plot(t,z(:,1),'r',t,z(:,3),'b')
-xlabel('time'); ylabel('Angle (rad)');
-legend('Stance Angle','Swing Angle');
-title('State variables vs time for passive walker');
+disp('収束過程の分析...')
 
+% 各歩行サイクルの終了時点での状態を抽出
+cycle_end_indices = [];
+for i = 2:length(t)
+    if t(i) < t(i-1)  % 時間がリセットされる点
+        cycle_end_indices = [cycle_end_indices, i-1];
+    end
+end
+cycle_end_indices = [cycle_end_indices, length(t)];  % 最後の点も追加
+
+% 各サイクル終了時の状態
+cycle_states = z(cycle_end_indices, 1:4);
+
+figure('Name', '初期値から固定点への収束過程');
+
+% サブプロット1: 各状態変数の収束
+subplot(2,2,1)
+plot(1:length(cycle_end_indices), cycle_states(:,1), 'ro-', 'LineWidth', 2)
+hold on
+plot([1, length(cycle_end_indices)], [zstar(1), zstar(1)], 'k--', 'LineWidth', 1)
+xlabel('歩行サイクル')
+ylabel('q1 (スタンス脚角度)')
+title('q1の収束')
+grid on
+
+subplot(2,2,2)
+plot(1:length(cycle_end_indices), cycle_states(:,2), 'bo-', 'LineWidth', 2)
+hold on
+plot([1, length(cycle_end_indices)], [zstar(2), zstar(2)], 'k--', 'LineWidth', 1)
+xlabel('歩行サイクル')
+ylabel('u1 (スタンス脚角速度)')
+title('u1の収束')
+grid on
+
+subplot(2,2,3)
+plot(1:length(cycle_end_indices), cycle_states(:,3), 'go-', 'LineWidth', 2)
+hold on
+plot([1, length(cycle_end_indices)], [zstar(3), zstar(3)], 'k--', 'LineWidth', 1)
+xlabel('歩行サイクル')
+ylabel('q2 (スイング脚角度)')
+title('q2の収束')
+grid on
+
+subplot(2,2,4)
+plot(1:length(cycle_end_indices), cycle_states(:,4), 'mo-', 'LineWidth', 2)
+hold on
+plot([1, length(cycle_end_indices)], [zstar(4), zstar(4)], 'k--', 'LineWidth', 1)
+xlabel('歩行サイクル')
+ylabel('u2 (スイング脚角速度)')
+title('u2の収束')
+grid on
+
+sgtitle('初期値から安定歩行への収束過程（黒破線：固定点）')
+
+% 収束の定量的評価
+figure('Name', '収束の定量的評価');
+distances = zeros(length(cycle_end_indices), 1);
+for i = 1:length(cycle_end_indices)
+    distances(i) = norm(cycle_states(i,:) - zstar);
+end
+
+semilogy(1:length(cycle_end_indices), distances, 'ko-', 'LineWidth', 2, 'MarkerSize', 8)
+xlabel('歩行サイクル')
+ylabel('固定点からの距離（対数スケール）')
+title('固定点への収束速度')
+grid on
+
+% 収束判定
+threshold = 1e-3;
+converged_cycle = find(distances < threshold, 1);
+if ~isempty(converged_cycle)
+    fprintf('\n✅ 歩行は%d歩目で固定点に収束しました（誤差 < %.1e）\n', converged_cycle, threshold);
+else
+    fprintf('\n⚠️ %d歩後も完全には収束していません（最終誤差: %.3e）\n', steps_long, distances(end));
+end
+
+% 最初と最後の数歩を比較
+figure('Name', '初期歩行と収束後の比較');
+subplot(2,1,1)
+% 最初の3歩
+idx_start = 1:min(300, length(t));
+plot(t(idx_start), z(idx_start,1), 'r-', 'LineWidth', 2)
+hold on
+plot(t(idx_start), z(idx_start,3), 'b-', 'LineWidth', 2)
+xlabel('時間 (s)')
+ylabel('角度 (rad)')
+title('最初の3歩')
+legend('スタンス脚', 'スイング脚')
+grid on
+
+subplot(2,1,2)
+% 最後の3歩
+idx_end = max(1, length(t)-300):length(t);
+t_shifted = t(idx_end) - t(idx_end(1));  % 時間を0から開始
+plot(t_shifted, z(idx_end,1), 'r-', 'LineWidth', 2)
+hold on
+plot(t_shifted, z(idx_end,3), 'b-', 'LineWidth', 2)
+xlabel('時間 (s)')
+ylabel('角度 (rad)')
+title('最後の3歩（収束後）')
+legend('スタンス脚', 'スイング脚')
+grid on
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% FUNCTIONS START HERE %%%%%%%%
@@ -117,21 +268,14 @@ function zdiff=fixedpt(z0,walker)
 %===================================================================
 zdiff=onestep(z0,walker)-z0; 
 
+end
+
 %===================================================================
 function J=partialder(FUN,z,walker)
 %===================================================================
 pert=1e-5;
 n = length(z);
 J = zeros(n,n);
-
-%%%% Using forward difference, accuracy linear %%%
-% y0=feval(FUN,z,walker); 
-% for i=1:n
-%     ztemp=z;
-%     ztemp(i)=ztemp(i)+pert; 
-%     J(:,i)=(feval(FUN,ztemp,walker)-y0) ;
-% end
-% J=(J/pert);
 
 %%% Using central difference, accuracy quadratic %%%
 for i=1:n
@@ -141,6 +285,8 @@ for i=1:n
     J(:,i)=(feval(FUN,ztemp1,walker)-feval(FUN,ztemp2,walker)) ;
 end
 J=J/(2*pert);
+
+end
 
 %===================================================================
 function [z,t]=onestep(z0,walker,steps)
@@ -202,6 +348,8 @@ if flag==1
    t=t_ode;
 end
 
+end
+
 %===================================================================
 function zdot=single_stance(t,z,walker)  
 %===================================================================
@@ -243,6 +391,8 @@ ayh = -l*cos(q1)*u1^2-l*sin(q1)*ud1;
 zdot = [u1 ud1 u2 ud2 ...           
         DTE vxh axh vyh ayh]';  
 
+end
+
 %===================================================================
 function [gstop, isterminal,direction]=collision(t,z,walker)
 %===================================================================
@@ -260,6 +410,8 @@ else
     isterminal=1; %ode should terminate is conveyed by 1, if you put 0 it goes till the final time u specify
 end
 direction=-1; % The t_final can be approached by any direction is indicated by the direction
+
+end
 
 %===================================================================
 function zplus=heelstrike(t,z,walker)      
@@ -301,9 +453,10 @@ vyh = -l*sin(q1)*u1;
 
 zplus = [q1 u1 q2 u2 TE xh vxh yh vyh];                     
 
+end
 
 %===================================================================
-function animate(t_all,z_all,walker,steps,fps)
+function animate_walker(t_all,z_all,walker,steps,fps)
 %===================================================================
 
 %%%% Interpolate linearly using fps %%%%%
@@ -376,13 +529,6 @@ delay =floor(moviescaling); %delay per frame in .001 secs
 
 for i=1:mm
     
-%%%% Put some delay if needed %%%%%%%%%%   
-%    for j=1:100, log(1:delay*17); end %delay for graphics. 
-% 	                                 %the number in this expression
-% 									 %is machine dependent.
-% 									 %The LOG is just something
-% 									 %to keep the machine busy.
-
    q1 = z(i,1); q2 = z(i,2); 
    xh = z(i,3); yh = z(i,4);  
 
@@ -430,8 +576,169 @@ for i=1:mm
   
 end
 
+end
+
+%===================================================================
+function animate_and_save(t_all,z_all,walker,steps,fps,filename)
+%===================================================================
+% アニメーションを作成して動画ファイルとして保存
+% 入力:
+%   t_all, z_all, walker, steps, fps - 通常のanimate関数と同じ
+%   filename - 保存するファイル名（拡張子なし）
+
+if nargin < 6
+    % ファイル名が指定されていない場合、タイムスタンプを使用
+    filename = sprintf('walker_animation_%s', datestr(now, 'yyyymmdd_HHMMSS'));
+end
+
+%%%% Interpolate linearly using fps %%%%%
+z_all_plot = [z_all(:,1) z_all(:,3) z_all(:,6) z_all(:,8)];
+nn = size(z_all_plot,2);
+total_frames = round(t_all(end)*fps);
+t = linspace(0,t_all(end),total_frames);
+z = zeros(total_frames,nn);
+for i=1:nn
+    z(:,i) = interp1(t_all,z_all_plot(:,i),t);
+end
+
+%%%% Set up the video writer %%%%%
+video_filename = [filename '.mp4'];
+v = VideoWriter(video_filename, 'MPEG-4');
+v.FrameRate = fps;
+v.Quality = 95;  % 高品質設定
+open(v);
+
+fprintf('動画を保存中: %s\n', video_filename);
+
+%%%% Now animate and save the results %%%%%%%
+figure('Position', [100, 100, 800, 600]);
+clf
+
+M = walker.M;  m = walker.m; I = walker.I;   
+l = walker.l;  c = walker.c; w = walker.w;   
+r = walker.r;  g = walker.g; gam = walker.gam; 
+
+mm = size(z,1);
+
+min_xh = min(z(:,3)); max_xh = max(z(:,3)); 
+dist_travelled = max_xh - min_xh;
+camera_rate = dist_travelled/mm;
+
+window_xmin = -1*l; window_xmax = 1*l;
+window_ymin = -0.1; window_ymax = 1.1*(l+r);
+
+axis('equal')
+axis([window_xmin window_xmax window_ymin window_ymax])
+axis off
+set(gcf,'Color',[1,1,1])
+
+%%%%%%
+lines_for_feet = 4; %no of straight lines to represent a foot.
+counter = 2 + 2*lines_for_feet; % total number of segments needed for animation. 2 legs and other for feet
+th = 0.25; %%%% angle subtended by each straight line segment of foot
+
+%%% creat object for hinge %%%%%
+hingepic=line('xdata',0,'ydata',0, 'marker','.','markersize',[20], ...
+          'erase','xor','color','black');
+
+   
+%%%% create object for legs and feet %%%%
+barref = [0 0; 0 -1]; %%% bar along negative y-axis
+y = [0;-1]; %%% vector along negative y
+O = [0; 0]; %%%% origin
+
+%%%% legs in red %%%      
+for p = 1:2
+    barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 2, 'erase','xor','color','red');
+end
+
+%%% feet in blue %%%
+for p = 3:counter
+    barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 2, 'erase','xor','color','blue');
+end
+
+%%%% create ramp %%%%
+rampref=[min_xh-1 max_xh+l ; 0 0];
+
+%%%% Draw ramp %%%%%%%%%%
+line('xdata',rampref(1,:),'ydata',rampref(2,:), ...
+            'linewidth', 1,'color','black');
+
+% Progress bar setup
+fprintf('フレーム処理中: ');
+progress_length = 50;
+
+for i=1:mm
+    
+   q1 = z(i,1); q2 = z(i,2); 
+   xh = z(i,3); yh = z(i,4);  
+
+   window_xmin = window_xmin + camera_rate;
+   window_xmax = window_xmax + camera_rate;
+   axis('equal')
+   axis([window_xmin window_xmax window_ymin window_ymax])
+
+   %%% hinge coordinates
+   hinge=[xh; yh];   
+   
+   %%% leg coordinates
+   A = [q1 -(q2-q1)];
+   
+   for p = 1:2
+       bar(:,:,p) = [hinge, hinge] + (l+r)*R(A(p))*barref;
+       center(:,:,p) = hinge + l*R(A(p))*y; %%% center of each circle on foot 
+   end
+   
+   %%%% feet coordinates
+   
+   %%% angle subtended by arc at the center %%%
+   %%% This is for lines_for_feet = 4 and need changes if more lines
+   %%% are needed to represent a foot. Size of this matrix is lines_for_feet*2
+   B = [-th -2*th; 0 -th; th 0; 2*th th];
+
+   incr = 3;
+   for p=1:2
+       for q=1:4
+              C = A(p) + B(q,:);
+              bar(:,:,incr) = [center(:,:,p), center(:,:,p)] + r*R(C(1))*[O,y] + r*R(C(2))*[y, O]; 
+              incr = incr + 1;
+       end
+   end
+          
+   %%% animate now    
+   set(hingepic,'xdata',hinge(1),'ydata',hinge(2));
+
+   for p=1:counter
+       set(barpic(p),'xdata',bar(1,:,p),'ydata',bar(2,:,p));
+   end
+   
+   drawnow
+   
+   % Capture frame and write to video
+   frame = getframe(gcf);
+   writeVideo(v, frame);
+   
+   % Progress bar update
+   if mod(i, ceil(mm/progress_length)) == 0
+       fprintf('.');
+   end
+  
+end
+
+fprintf(' 完了!\n');
+
+% Close the video file
+close(v);
+fprintf('動画を保存しました: %s\n', video_filename);
+fprintf('ファイルサイズ: %.2f MB\n', dir(video_filename).bytes/1024/1024);
+
+end
+
 %===================================================================
 function rotation = R(A)
 %===================================================================
 rotation = [cos(A) -sin(A); sin(A) cos(A)];
 
+end
+
+end
