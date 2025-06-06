@@ -1,5 +1,5 @@
 function simple_grid_gui()
-% シンプルなグリッドサーチGUI
+% シンプルなグリッドサーチGUI（計算時間推定機能付き）
 
     % Figure作成
     fig = figure('Position', [200 200 500 450], ...
@@ -146,18 +146,78 @@ function simple_grid_gui()
                 params.u2_min, params.u2_max, params.u2_step, length(params.u2_range));
         fprintf('総探索数: %d\n', params.total_combinations);
         
+        % ⏱️ 計算時間推定を追加
+        fprintf('\n⏱️ === 計算時間推定 ===\n');
+        
+        % 実績データに基づく推定（220個で20秒）
+        reference_rate = 20 / 220;  % 秒/個
+        
+        % グリッド解析の時間推定（固定点計算とヤコビアン計算）
+        grid_rate = reference_rate * 0.3;  % グリッド解析は収束テストより高速
+        grid_time_sequential = grid_rate * params.total_combinations;
+        
+        % 収束探索の時間推定
+        convergence_rate = reference_rate;  % 実績ベース
+        convergence_time_sequential = convergence_rate * params.total_combinations;
+        
+        % 並列処理での推定（利用可能なコア数を考慮）
+        pool = gcp('nocreate');
+        if isempty(pool)
+            max_workers = feature('numcores');
+            typical_workers = min(max_workers - 1, 8);  % 通常は最大8ワーカー
+        else
+            typical_workers = pool.NumWorkers;
+        end
+        
+        % 並列処理の効率を考慮（オーバーヘッド1.2倍）
+        parallel_efficiency = 1.2;
+        grid_time_parallel = grid_time_sequential / typical_workers * parallel_efficiency;
+        convergence_time_parallel = convergence_time_sequential / typical_workers * parallel_efficiency;
+        
+        % グリッド解析の推定表示
+        fprintf('\n📊 グリッド解析の推定時間:\n');
+        fprintf('  - 逐次処理: %.1f秒 (%.1f分)\n', grid_time_sequential, grid_time_sequential/60);
+        fprintf('  - 並列処理（%dワーカー想定）: %.1f秒 (%.1f分)\n', ...
+                typical_workers, grid_time_parallel, grid_time_parallel/60);
+        
+        % 収束探索の推定表示
+        fprintf('\n🎯 収束探索の推定時間:\n');
+        fprintf('  - 逐次処理: %.1f秒 (%.1f分)\n', convergence_time_sequential, convergence_time_sequential/60);
+        fprintf('  - 並列処理（%dワーカー想定）: %.1f秒 (%.1f分)\n', ...
+                typical_workers, convergence_time_parallel, convergence_time_parallel/60);
+        
+        % 警告表示
+        if convergence_time_parallel > 300  % 5分以上
+            fprintf('\n⚠️ 注意: 計算に時間がかかる可能性があります。\n');
+            fprintf('   探索範囲を狭めるか、刻み幅を大きくすることを検討してください。\n');
+        elseif convergence_time_parallel > 60  % 1分以上
+            fprintf('\n💡 ヒント: 並列処理を使用することで計算時間を短縮できます。\n');
+        end
+        
+        % メモリ使用量の推定
+        memory_per_condition = 8 * 9 * 2;  % double型 * 変数数 * 係数
+        total_memory_mb = params.total_combinations * memory_per_condition / 1024 / 1024;
+        fprintf('\n💾 推定メモリ使用量: %.1f MB\n', total_memory_mb);
+        
         % ワークスペースに設定を保存
         assignin('base', 'grid_params', params);
-        fprintf('設定がワークスペースに保存されました（変数名: grid_params）\n');
+        fprintf('\n✅ 設定がワークスペースに保存されました（変数名: grid_params）\n');
     end
     
     function start_grid_analysis(~, ~)
         params = get_parameters();
         
-        % 確認ダイアログ
-        if params.total_combinations > 500
-            answer = questdlg(sprintf('探索数が %d と多いです。続行しますか？', params.total_combinations), ...
-                            '確認', 'はい', 'いいえ', 'いいえ');
+        % 時間推定を含む確認ダイアログ
+        if params.total_combinations > 100
+            % 簡易推定
+            grid_time = params.total_combinations * 0.03;  % グリッド解析の推定
+            
+            message = sprintf(['探索数: %d\n' ...
+                             '推定時間: %.1f秒 (%.1f分)\n\n' ...
+                             '続行しますか？'], ...
+                             params.total_combinations, grid_time, grid_time/60);
+            
+            answer = questdlg(message, '確認', 'はい', 'いいえ', 'いいえ');
             if ~strcmp(answer, 'はい')
                 return;
             end
@@ -171,16 +231,24 @@ function simple_grid_gui()
             grid_runner(params);
         catch ME
             fprintf('エラーが発生しました: %s\n', ME.message);
+            fprintf('エラー詳細:\n%s\n', getReport(ME));
         end
     end
     
     function start_convergence_search(~, ~)
         params = get_parameters();
         
-        % 確認ダイアログ
-        if params.total_combinations > 500
-            answer = questdlg(sprintf('探索数が %d と多いです。続行しますか？', params.total_combinations), ...
-                            '確認', 'はい', 'いいえ', 'いいえ');
+        % 時間推定を含む確認ダイアログ
+        if params.total_combinations > 100
+            % 実績ベースの推定
+            convergence_time = params.total_combinations * (20/220);  % 220個で20秒の実績
+            
+            message = sprintf(['探索数: %d\n' ...
+                             '推定時間: %.1f秒 (%.1f分)\n\n' ...
+                             '続行しますか？'], ...
+                             params.total_combinations, convergence_time, convergence_time/60);
+            
+            answer = questdlg(message, '確認', 'はい', 'いいえ', 'いいえ');
             if ~strcmp(answer, 'はい')
                 return;
             end
@@ -194,6 +262,7 @@ function simple_grid_gui()
             convergence_basin_search(params);
         catch ME
             fprintf('エラーが発生しました: %s\n', ME.message);
+            fprintf('エラー詳細:\n%s\n', getReport(ME));
         end
     end
     
@@ -215,9 +284,15 @@ function simple_grid_gui()
         % 範囲作成
         params.q1_range = params.q1_min:params.q1_step:params.q1_max;
         if isempty(params.q1_range), params.q1_range = params.q1_min; end
+        
         params.u1_range = params.u1_min:params.u1_step:params.u1_max;
+        if isempty(params.u1_range), params.u1_range = params.u1_min; end
+        
         params.q2_range = params.q2_min:params.q2_step:params.q2_max;
+        if isempty(params.q2_range), params.q2_range = params.q2_min; end
+        
         params.u2_range = params.u2_min:params.u2_step:params.u2_max;
+        if isempty(params.u2_range), params.u2_range = params.u2_min; end
         
         % 総組み合わせ数
         params.total_combinations = length(params.q1_range) * length(params.u1_range) * ...

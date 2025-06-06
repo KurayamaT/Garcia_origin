@@ -1,5 +1,5 @@
 function convergence_basin_search(params)
-% 実際に収束する初期値を探索する関数
+% 実際に収束する初期値を探索する関数（並列処理強化版 + 計算時間推定機能付き）
 % params: 探索パラメータ構造体（grid_runnerと同じ形式）
 
     fprintf('\n=== 収束保証付き初期値探索 ===\n');
@@ -8,12 +8,24 @@ function convergence_basin_search(params)
     walker.M = 1000; walker.m = 1.0; walker.I = 0.00; walker.l = 1.0; walker.w = 0.0; 
     walker.c = 1.0;  walker.r = 0.3; walker.g = 1.0; walker.gam = 0.009;
     
-    % 探索範囲の表示
+    % 探索範囲の詳細表示
     fprintf('\n📋 探索範囲:\n');
-    fprintf('q1: %.3f ～ %.3f (%.3f刻み, %d点)\n', params.q1_min, params.q1_max, params.q1_step, length(params.q1_range));
-    fprintf('u1: %.3f ～ %.3f (%.3f刻み, %d点)\n', params.u1_min, params.u1_max, params.u1_step, length(params.u1_range));
-    fprintf('q2: %.3f ～ %.3f (%.3f刻み, %d点)\n', params.q2_min, params.q2_max, params.q2_step, length(params.q2_range));
-    fprintf('u2: %.3f ～ %.3f (%.3f刻み, %d点)\n', params.u2_min, params.u2_max, params.u2_step, length(params.u2_range));
+    fprintf('q1 (スタンス脚角度):  %.3f から %.3f まで %.3f 刻み (%d点)\n', ...
+            params.q1_min, params.q1_max, params.q1_step, length(params.q1_range));
+    fprintf('u1 (スタンス脚角速度): %.3f から %.3f まで %.3f 刻み (%d点)\n', ...
+            params.u1_min, params.u1_max, params.u1_step, length(params.u1_range));
+    fprintf('q2 (スイング脚角度):  %.3f から %.3f まで %.3f 刻み (%d点)\n', ...
+            params.q2_min, params.q2_max, params.q2_step, length(params.q2_range));
+    fprintf('u2 (スイング脚角速度): %.3f から %.3f まで %.3f 刻み (%d点)\n', ...
+            params.u2_min, params.u2_max, params.u2_step, length(params.u2_range));
+    fprintf('総探索数: %d\n', params.total_combinations);
+    
+    % 探索範囲の実際の値も表示
+    fprintf('\n🔍 実際の探索値:\n');
+    fprintf('q1: ['); fprintf('%.3f ', params.q1_range); fprintf(']\n');
+    fprintf('u1: ['); fprintf('%.3f ', params.u1_range); fprintf(']\n');
+    fprintf('q2: ['); fprintf('%.3f ', params.q2_range); fprintf(']\n');
+    fprintf('u2: ['); fprintf('%.3f ', params.u2_range); fprintf(']\n');
     
     % 全組み合わせ作成
     [Q1, U1, Q2, U2] = ndgrid(params.q1_range, params.u1_range, ...
@@ -21,35 +33,124 @@ function convergence_basin_search(params)
     all_conditions = [Q1(:), U1(:), Q2(:), U2(:)];
     total = size(all_conditions, 1);
     
-    fprintf('総探索数: %d\n', total);
+    % ⏱️ 計算時間推定
+    fprintf('\n⏱️ 計算時間推定中...\n');
     
-    % 結果保存用
-    convergent_conditions = [];
-    convergence_info = [];
-    
-    % 並列処理の設定
-    use_parallel = false;
-    if total > 100
-        answer = input('\n並列処理を使用しますか？ (y/n) [推奨: y]: ', 's');
-        if isempty(answer) || strcmpi(answer, 'y')
-            pool = gcp('nocreate');
-            if isempty(pool)
-                parpool;
-            end
-            use_parallel = true;
-        end
-    end
-    
-    fprintf('\n🚀 収束テスト開始...\n');
-    tic;
+    % サンプリングで実行時間を推定（最大10個のサンプル）
+    sample_size = min(10, total);
+    sample_indices = randsample(total, sample_size);
     
     % 収束テストパラメータ
     test_steps = 30;  % 収束判定のための歩数
     convergence_threshold = 1e-3;  % 収束判定閾値
     
+    % サンプル計算を実行
+    fprintf('サンプル計算実行中（%d個）...', sample_size);
+    tic;
+    for i = 1:sample_size
+        z0 = all_conditions(sample_indices(i), :);
+        test_convergence_from_initial(z0, walker, test_steps, convergence_threshold);
+    end
+    sample_time = toc;
+    fprintf(' 完了\n');
+    
+    % 1個あたりの平均時間を計算
+    time_per_condition = sample_time / sample_size;
+    
+    % 並列処理の確認と設定
+    use_parallel = true;
+    pool = gcp('nocreate');
+    num_workers = 1;
+    
+    if isempty(pool)
+        if total > 50  % 50個以上の場合のみ並列処理を提案
+            % 推定時間を表示して判断材料を提供
+            estimated_sequential_time = time_per_condition * total;
+            fprintf('\n📊 推定実行時間:\n');
+            fprintf('  - 逐次処理: %.1f秒 (%.1f分)\n', estimated_sequential_time, estimated_sequential_time/60);
+            
+            % 利用可能なコア数を取得
+            max_workers = feature('numcores');
+            typical_workers = min(max_workers - 1, 8);  % 通常は最大8ワーカー
+            estimated_parallel_time = time_per_condition * total / typical_workers * 1.2;  % 1.2はオーバーヘッド
+            fprintf('  - 並列処理（%dワーカー想定）: %.1f秒 (%.1f分)\n', ...
+                    typical_workers, estimated_parallel_time, estimated_parallel_time/60);
+            
+            answer = input('\n並列処理を使用しますか？ (y/n) [推奨: y]: ', 's');
+            if isempty(answer) || strcmpi(answer, 'y')
+                fprintf('並列プールを起動中...\n');
+                parpool;
+                pool = gcp('nocreate');
+                num_workers = pool.NumWorkers;
+                use_parallel = true;
+            else
+                use_parallel = false;
+            end
+        else
+            use_parallel = false;
+            estimated_time = time_per_condition * total;
+            fprintf('\n📊 推定実行時間: %.1f秒\n', estimated_time);
+        end
+    else
+        num_workers = pool.NumWorkers;
+        fprintf('既存の並列プール（ワーカー数: %d）を使用\n', num_workers);
+        use_parallel = true;
+    end
+    
+    % 最終的な推定時間を計算・表示
     if use_parallel
-        % 並列処理
+        estimated_time = time_per_condition * total / num_workers * 1.2;  % オーバーヘッド込み
+        fprintf('\n⏱️ 最終推定実行時間（並列%dワーカー）: %.1f秒 (%.1f分)\n', ...
+                num_workers, estimated_time, estimated_time/60);
+    else
+        estimated_time = time_per_condition * total;
+        fprintf('\n⏱️ 最終推定実行時間（逐次処理）: %.1f秒 (%.1f分)\n', ...
+                estimated_time, estimated_time/60);
+    end
+    
+    % 実績データに基づく補正（220個で20秒の実績から）
+    reference_rate = 20 / 220;  % 秒/個
+    if abs(time_per_condition - reference_rate) > reference_rate * 0.5
+        fprintf('💡 参考: 前回の実績では220個で約20秒でした（%.3f秒/個）\n', reference_rate);
+        alternative_estimate = reference_rate * total;
+        if use_parallel
+            alternative_estimate = alternative_estimate / num_workers * 1.2;
+        end
+        fprintf('   実績ベースの推定: %.1f秒 (%.1f分)\n', alternative_estimate, alternative_estimate/60);
+    end
+    
+    % 続行確認
+    if estimated_time > 300  % 5分以上かかる場合
+        fprintf('\n⚠️ 計算に%.1f分以上かかる見込みです。\n', estimated_time/60);
+        continue_answer = input('続行しますか？ (y/n) [n]: ', 's');
+        if ~strcmpi(continue_answer, 'y')
+            fprintf('処理を中止しました。\n');
+            return;
+        end
+    end
+    
+    % 結果保存用
+    convergent_conditions = [];
+    convergence_info = [];
+    
+    % 進捗表示
+    if use_parallel
+        fprintf('\n🚀 並列処理で収束テスト実行中...\n');
+    else
+        fprintf('\n🚀 逐次処理で収束テスト実行中...\n');
+    end
+    
+    % 実際の計算開始
+    actual_start_time = tic;
+    
+    if use_parallel
+        % 並列処理（改良版）
+        fprintf('並列処理中（%d個の初期条件を評価）...\n', total);
         results_cell = cell(total, 1);
+        
+        % プログレスバー的な表示のため、一定間隔で進捗を表示
+        fprintf('進捗: ');
+        
         parfor idx = 1:total
             z0 = all_conditions(idx, :);
             result = test_convergence_from_initial(z0, walker, test_steps, convergence_threshold);
@@ -58,19 +159,34 @@ function convergence_basin_search(params)
             end
         end
         
+        fprintf('完了！\n');
+        fprintf('並列処理完了。結果を集計中...\n');
+        
         % 結果集計
+        success_count = 0;
         for idx = 1:total
             if ~isempty(results_cell{idx})
                 result = results_cell{idx};
                 convergent_conditions = [convergent_conditions; result.initial_condition];
                 convergence_info = [convergence_info; result];
+                success_count = success_count + 1;
+                
+                fprintf('✅ 収束確認 #%d: [%.3f, %.3f, %.3f, %.3f] → 固定点まで%.4f (収束: %d歩)\n', ...
+                        success_count, result.initial_condition, result.final_distance, result.steps_to_converge);
             end
         end
     else
-        % 逐次処理
+        % 逐次処理（進捗表示付き）
+        progress_interval = max(1, floor(total/20));
+        last_progress_time = tic;
+        
         for idx = 1:total
-            if mod(idx, max(1, floor(total/20))) == 0
-                fprintf('進捗: %d/%d (%.1f%%)\n', idx, total, 100*idx/total);
+            if mod(idx, progress_interval) == 0
+                elapsed = toc(actual_start_time);
+                progress_percent = 100 * idx / total;
+                remaining_time = elapsed / idx * (total - idx);
+                fprintf('進捗: %d/%d (%.1f%%) - 経過: %.1f秒, 残り推定: %.1f秒\n', ...
+                        idx, total, progress_percent, elapsed, remaining_time);
             end
             
             z0 = all_conditions(idx, :);
@@ -86,13 +202,17 @@ function convergence_basin_search(params)
         end
     end
     
-    elapsed = toc;
+    actual_elapsed = toc(actual_start_time);
     
     % 結果まとめ
     num_convergent = size(convergent_conditions, 1);
     fprintf('\n%s\n', repmat('=', 1, 60));
-    fprintf('🎉 探索完了！\n');
-    fprintf('実行時間: %.1f秒\n', elapsed);
+    fprintf('🎉 収束領域探索完了！\n');
+    fprintf('実行時間: %.1f秒 (推定: %.1f秒, 誤差: %.1f%%)\n', ...
+            actual_elapsed, estimated_time, 100*abs(actual_elapsed-estimated_time)/estimated_time);
+    if use_parallel && ~isempty(pool)
+        fprintf('並列処理（%dワーカー）で高速化されました\n', pool.NumWorkers);
+    end
     fprintf('収束する初期値: %d/%d (%.1f%%)\n', num_convergent, total, 100*num_convergent/total);
     fprintf('%s\n', repmat('=', 1, 60));
     
@@ -122,28 +242,36 @@ function convergence_basin_search(params)
                     i, info.initial_condition, info.steps_to_converge, info.final_distance);
         end
         
+        if num_convergent > 10
+            fprintf('... 他 %d 個の収束条件\n', num_convergent - 10);
+        end
+        
         % ワークスペースに保存
         assignin('base', 'convergent_initials', sorted_conditions);
         assignin('base', 'convergence_details', sorted_info);
         assignin('base', 'best_convergent_initial', best);
+        assignin('base', 'convergence_params', params);
         
         fprintf('\n📁 結果がワークスペースに保存されました:\n');
-        fprintf('- convergent_initials: 収束する全初期値\n');
+        fprintf('- convergent_initials: 収束する全初期値（収束速度順）\n');
         fprintf('- convergence_details: 収束の詳細情報\n');
         fprintf('- best_convergent_initial: 最速収束する初期値\n');
+        fprintf('- convergence_params: 探索パラメータ\n');
         
-        % 可視化
+        % 🎨 可視化
+        fprintf('\n🎨 結果を可視化中...\n');
         visualize_convergence_results(sorted_info, all_conditions, params);
         
-        % CSVに保存
-        save_convergence_results(sorted_info, params);
+        % 💾 結果をスプレッドシートに保存
+        fprintf('\n💾 結果をスプレッドシートに保存中...\n');
+        save_convergence_results_to_spreadsheet(sorted_info, all_conditions, params);
         
     else
         fprintf('\n❌ 収束する初期値が見つかりませんでした。\n');
         fprintf('💡 対策案:\n');
         fprintf('  - 探索範囲を論文の値 [0.2, -0.2, 0.4, -0.3] の近くに設定\n');
         fprintf('  - 刻み幅を細かくする\n');
-        fprintf('  - 収束判定の歩数を増やす\n');
+        fprintf('  - 収束判定の歩数を増やす（現在: %d歩）\n', test_steps);
     end
 end
 
@@ -228,19 +356,36 @@ function visualize_convergence_results(convergence_info, all_conditions, params)
     conv_initials = vertcat(convergence_info.initial_condition);
     conv_steps = [convergence_info.steps_to_converge];
     
+    % 全条件のデータ
+    all_q1 = all_conditions(:, 1);
+    all_u1 = all_conditions(:, 2);
+    all_q2 = all_conditions(:, 3);
+    all_u2 = all_conditions(:, 4);
+    
     % サブプロット1: 収束速度の分布（色で表示）
     subplot(2, 2, 1);
+    % 失敗した点を薄く表示
+    scatter3(all_q1, all_u1, all_q2, 15, [0.8 0.8 0.8], 'o', 'MarkerFaceAlpha', 0.3);
+    hold on;
+    % 収束する点を色分けして表示
     scatter3(conv_initials(:,1), conv_initials(:,2), conv_initials(:,3), ...
              80, conv_steps, 'filled', 'MarkerEdgeColor', 'k');
-    xlabel('q1'); ylabel('u1'); zlabel('q2');
+    xlabel('q1 (スタンス脚角度)');
+    ylabel('u1 (スタンス脚角速度)');
+    zlabel('q2 (スイング脚角度)');
     title('収束する初期値（色：収束歩数）');
-    colorbar;
+    c = colorbar;
+    ylabel(c, '収束歩数');
     grid on;
     view(45, 30);
+    % 最速収束点をハイライト
+    plot3(conv_initials(1,1), conv_initials(1,2), conv_initials(1,3), ...
+          'rp', 'MarkerSize', 15, 'MarkerFaceColor', 'red', 'LineWidth', 2);
+    hold off;
     
     % サブプロット2: 収束歩数のヒストグラム
     subplot(2, 2, 2);
-    histogram(conv_steps, 20);
+    histogram(conv_steps, 20, 'FaceColor', [0.3 0.6 0.9]);
     xlabel('収束までの歩数');
     ylabel('頻度');
     title('収束速度の分布');
@@ -263,9 +408,10 @@ function visualize_convergence_results(convergence_info, all_conditions, params)
     % サブプロット4: 収束履歴の例（最速5つ）
     subplot(2, 2, 4);
     hold on;
+    colors = lines(5);
     for i = 1:min(5, length(convergence_info))
         history = convergence_info(i).convergence_history;
-        plot(1:length(history), history, 'LineWidth', 2);
+        plot(1:length(history), history, 'LineWidth', 2, 'Color', colors(i,:));
     end
     xlabel('歩数');
     ylabel('固定点からの距離');
@@ -273,52 +419,196 @@ function visualize_convergence_results(convergence_info, all_conditions, params)
     set(gca, 'YScale', 'log');
     grid on;
     legend('1位', '2位', '3位', '4位', '5位', 'Location', 'northeast');
+    hold off;
     
-    fprintf('\n📊 統計情報:\n');
+    % 統計情報を表示
+    fprintf('\n📊 収束統計:\n');
+    fprintf('収束条件数: %d\n', length(conv_steps));
     fprintf('平均収束歩数: %.1f歩\n', mean(conv_steps));
     fprintf('最速収束: %d歩\n', min(conv_steps));
     fprintf('最遅収束: %d歩\n', max(conv_steps));
     fprintf('標準偏差: %.1f歩\n', std(conv_steps));
+    
+    % パラメータ範囲
+    fprintf('\n🎯 収束する初期値の範囲:\n');
+    fprintf('q1: %.3f ～ %.3f (平均: %.3f)\n', min(conv_initials(:,1)), max(conv_initials(:,1)), mean(conv_initials(:,1)));
+    fprintf('u1: %.3f ～ %.3f (平均: %.3f)\n', min(conv_initials(:,2)), max(conv_initials(:,2)), mean(conv_initials(:,2)));
+    fprintf('q2: %.3f ～ %.3f (平均: %.3f)\n', min(conv_initials(:,3)), max(conv_initials(:,3)), mean(conv_initials(:,3)));
+    fprintf('u2: %.3f ～ %.3f (平均: %.3f)\n', min(conv_initials(:,4)), max(conv_initials(:,4)), mean(conv_initials(:,4)));
+    
+    fprintf('\n💡 図の見方:\n');
+    fprintf('- グレーの点: 収束しない条件\n');
+    fprintf('- カラーの点: 収束する条件（色は収束歩数）\n');
+    fprintf('- 赤いダイヤ: 最速で収束する条件\n');
+    fprintf('- 3D図は回転・ズーム可能です\n');
 end
 
-function save_convergence_results(convergence_info, params)
-% 収束結果をCSVファイルに保存
+function save_convergence_results_to_spreadsheet(convergence_info, all_conditions, params)
+% 収束結果をスプレッドシートに保存
     
     timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-    filename = sprintf('convergent_initials_%s.csv', timestamp);
     
-    % テーブル作成
-    T = table();
-    T.No = (1:length(convergence_info))';
+    fprintf('\n💾 収束結果をスプレッドシートに保存中...\n');
     
-    % 初期値
-    initials = vertcat(convergence_info.initial_condition);
-    T.q1_initial = initials(:, 1);
-    T.u1_initial = initials(:, 2);
-    T.q2_initial = initials(:, 3);
-    T.u2_initial = initials(:, 4);
-    
-    % 固定点
-    fixed = vertcat(convergence_info.fixed_point);
-    T.q1_fixed = fixed(:, 1);
-    T.u1_fixed = fixed(:, 2);
-    T.q2_fixed = fixed(:, 3);
-    T.u2_fixed = fixed(:, 4);
-    
-    % 収束情報
-    T.steps_to_converge = [convergence_info.steps_to_converge]';
-    T.final_distance = [convergence_info.final_distance]';
-    
-    % 初期距離
-    initial_distances = zeros(length(convergence_info), 1);
-    for i = 1:length(convergence_info)
-        initial_distances(i) = norm(initials(i,:) - fixed(i,:));
+    %% 1. 収束条件の詳細結果を保存
+    if length(convergence_info) > 0
+        % 収束結果のテーブル作成
+        convergence_table = table();
+        convergence_table.No = (1:length(convergence_info))';
+        
+        % 初期値
+        initials = vertcat(convergence_info.initial_condition);
+        convergence_table.q1_initial = initials(:, 1);
+        convergence_table.u1_initial = initials(:, 2);
+        convergence_table.q2_initial = initials(:, 3);
+        convergence_table.u2_initial = initials(:, 4);
+        
+        % 固定点
+        fixed = vertcat(convergence_info.fixed_point);
+        convergence_table.q1_fixed = fixed(:, 1);
+        convergence_table.u1_fixed = fixed(:, 2);
+        convergence_table.q2_fixed = fixed(:, 3);
+        convergence_table.u2_fixed = fixed(:, 4);
+        
+        % 収束情報
+        convergence_table.steps_to_converge = [convergence_info.steps_to_converge]';
+        convergence_table.final_distance = [convergence_info.final_distance]';
+        
+        % 初期距離
+        initial_distances = zeros(length(convergence_info), 1);
+        for i = 1:length(convergence_info)
+            initial_distances(i) = norm(initials(i,:) - fixed(i,:));
+        end
+        convergence_table.initial_distance = initial_distances;
+        
+        % 収束速度評価を追加
+        speed_rating = cell(length(convergence_info), 1);
+        for i = 1:length(convergence_info)
+            steps = convergence_info(i).steps_to_converge;
+            if steps <= 5
+                speed_rating{i} = '超高速';
+            elseif steps <= 10
+                speed_rating{i} = '高速';
+            elseif steps <= 20
+                speed_rating{i} = '標準';
+            else
+                speed_rating{i} = '低速';
+            end
+        end
+        convergence_table.speed_rating = speed_rating;
+        
+        % 収束結果を保存
+        convergence_filename = sprintf('walker_convergence_results_%s.xlsx', timestamp);
+        try
+            writetable(convergence_table, convergence_filename, 'Sheet', 'Convergence_Results');
+            fprintf('✅ 収束条件を保存: %s\n', convergence_filename);
+        catch
+            % Excelが使えない場合はCSVで保存
+            convergence_filename_csv = sprintf('walker_convergence_results_%s.csv', timestamp);
+            writetable(convergence_table, convergence_filename_csv);
+            fprintf('✅ 収束条件を保存: %s\n', convergence_filename_csv);
+        end
     end
-    T.initial_distance = initial_distances;
     
-    % CSVに保存
-    writetable(T, filename);
-    fprintf('\n✅ 収束する初期値を保存: %s\n', filename);
+    %% 2. 統計情報を保存
+    % 統計情報のテーブル作成
+    stats_table = table();
+    
+    % 探索パラメータ
+    param_names = {'q1_min'; 'q1_max'; 'q1_step'; 'q1_points'; ...
+                   'u1_min'; 'u1_max'; 'u1_step'; 'u1_points'; ...
+                   'q2_min'; 'q2_max'; 'q2_step'; 'q2_points'; ...
+                   'u2_min'; 'u2_max'; 'u2_step'; 'u2_points'; ...
+                   'total_combinations'; 'convergent_count'; 'convergence_rate_percent'};
+    
+    param_values = [params.q1_min; params.q1_max; params.q1_step; length(params.q1_range); ...
+                    params.u1_min; params.u1_max; params.u1_step; length(params.u1_range); ...
+                    params.q2_min; params.q2_max; params.q2_step; length(params.q2_range); ...
+                    params.u2_min; params.u2_max; params.u2_step; length(params.u2_range); ...
+                    params.total_combinations; length(convergence_info); ...
+                    100 * length(convergence_info) / params.total_combinations];
+    
+    stats_table.Parameter = param_names;
+    stats_table.Value = param_values;
+    
+    % 収束統計を追加
+    if length(convergence_info) > 0
+        conv_steps = [convergence_info.steps_to_converge]';
+        conv_stats_names = {'best_initial_q1'; 'best_initial_u1'; 'best_initial_q2'; 'best_initial_u2'; ...
+                           'best_steps'; 'mean_steps'; 'std_steps'; 'min_steps'; 'max_steps'};
+        
+        best = convergence_info(1);
+        conv_stats_values = [best.initial_condition'; ...
+                            best.steps_to_converge; ...
+                            mean(conv_steps); std(conv_steps); ...
+                            min(conv_steps); max(conv_steps)];
+        
+        conv_stats_table = table(conv_stats_names, conv_stats_values, ...
+                                'VariableNames', {'Statistic', 'Value'});
+        
+        % 統計を保存
+        stats_filename = sprintf('walker_convergence_stats_%s.xlsx', timestamp);
+        try
+            writetable(stats_table, stats_filename, 'Sheet', 'Search_Parameters');
+            writetable(conv_stats_table, stats_filename, 'Sheet', 'Convergence_Statistics');
+            fprintf('✅ 統計情報を保存: %s\n', stats_filename);
+        catch
+            % CSVで保存
+            stats_filename_csv = sprintf('walker_convergence_stats_%s.csv', timestamp);
+            writetable(stats_table, stats_filename_csv);
+            conv_stats_filename_csv = sprintf('walker_convergence_conv_stats_%s.csv', timestamp);
+            writetable(conv_stats_table, conv_stats_filename_csv);
+            fprintf('✅ 統計情報を保存: %s, %s\n', stats_filename_csv, conv_stats_filename_csv);
+        end
+    end
+    
+    %% 3. 要約レポートを作成
+    report_filename = sprintf('walker_convergence_report_%s.txt', timestamp);
+    fid = fopen(report_filename, 'w');
+    
+    fprintf(fid, '=== パッシブウォーカー 収束領域探索レポート ===\n');
+    fprintf(fid, '実行日時: %s\n\n', datestr(now));
+    
+    fprintf(fid, '【探索パラメータ】\n');
+    fprintf(fid, 'q1 (スタンス脚角度): %.3f ～ %.3f (刻み: %.3f, %d点)\n', ...
+            params.q1_min, params.q1_max, params.q1_step, length(params.q1_range));
+    fprintf(fid, 'u1 (スタンス脚角速度): %.3f ～ %.3f (刻み: %.3f, %d点)\n', ...
+            params.u1_min, params.u1_max, params.u1_step, length(params.u1_range));
+    fprintf(fid, 'q2 (スイング脚角度): %.3f ～ %.3f (刻み: %.3f, %d点)\n', ...
+            params.q2_min, params.q2_max, params.q2_step, length(params.q2_range));
+    fprintf(fid, 'u2 (スイング脚角速度): %.3f ～ %.3f (刻み: %.3f, %d点)\n', ...
+            params.u2_min, params.u2_max, params.u2_step, length(params.u2_range));
+    fprintf(fid, '総探索数: %d\n\n', params.total_combinations);
+    
+    fprintf(fid, '【結果サマリー】\n');
+    fprintf(fid, '収束する初期値数: %d / %d (%.1f%%)\n', ...
+            length(convergence_info), params.total_combinations, ...
+            100 * length(convergence_info) / params.total_combinations);
+    
+    if length(convergence_info) > 0
+        fprintf(fid, '\n【最速収束する初期値】\n');
+        best = convergence_info(1);
+        fprintf(fid, '初期値: [%.6f, %.6f, %.6f, %.6f]\n', best.initial_condition);
+        fprintf(fid, '収束歩数: %d\n', best.steps_to_converge);
+        fprintf(fid, '最終誤差: %.6e\n', best.final_distance);
+        fprintf(fid, '固定点: [%.6f, %.6f, %.6f, %.6f]\n', best.fixed_point);
+        
+        fprintf(fid, '\n【収束統計】\n');
+        conv_steps = [convergence_info.steps_to_converge];
+        fprintf(fid, '平均収束歩数: %.1f\n', mean(conv_steps));
+        fprintf(fid, '標準偏差: %.1f\n', std(conv_steps));
+        fprintf(fid, '最速: %d歩, 最遅: %d歩\n', min(conv_steps), max(conv_steps));
+    end
+    
+    fclose(fid);
+    fprintf('✅ レポートを保存: %s\n', report_filename);
+    
+    fprintf('\n📁 保存完了！以下のファイルが作成されました:\n');
+    if length(convergence_info) > 0
+        fprintf('  📊 収束結果: %s\n', convergence_filename);
+    end
+    fprintf('  📈 統計: %s\n', stats_filename);
+    fprintf('  📄 レポート: %s\n', report_filename);
 end
 
 % 必要な補助関数（grid_runnerからコピー）
@@ -395,7 +685,6 @@ function [z, t] = onestep(z0, walker, steps)
     end
 end
 
-% single_stance, collision, heelstrike関数も必要（grid_runnerからコピー）
 function zdot = single_stance(t,z,walker)  
     q1 = z(1);   u1 = z(2);                         
     q2 = z(3);   u2 = z(4);                         
