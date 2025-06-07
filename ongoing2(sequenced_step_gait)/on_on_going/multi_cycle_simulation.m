@@ -4,11 +4,6 @@ function multi_cycle_simulation()
     
     clear; close all;
     
-    % パスに物理計算関数があることを確認
-    if ~exist('one_and_half_stride_detailed', 'file')
-        error('passive_walker_physics.mが見つかりません。同じフォルダに配置してください。');
-    end
-    
     % === シミュレーション設定 ===
     fprintf('=== 複数サイクルパッシブウォーカーシミュレーション ===\n');
     fprintf('passive_walker_physics.mの物理モデルを使用します\n\n');
