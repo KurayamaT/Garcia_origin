@@ -3,6 +3,8 @@
 % single_stride_walker(1, [0.2, -0.25, 0.35, -0.4])  % 指定初期値から1.5歩
 % single_stride_walker(1)                              % デフォルト初期値から1.5歩
 % 成功例　single_stride_passivewalker(1, [0, -0.1, 0, -0.35])
+% single_stride_passivewalker(1, [-0.1, -0.1, -0.2, -0.35])
+% single_stride_passivewalker(1, [-0.05, -0.1, -0.1, -0.35])
 
 function single_stride_walker(flag, z0_input)
 

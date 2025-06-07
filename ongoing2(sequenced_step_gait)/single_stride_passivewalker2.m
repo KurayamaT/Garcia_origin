@@ -2,7 +2,6 @@
 % 使い方:
 % single_stride_walker(1, [0.2, -0.25, 0.35, -0.4])  % 指定初期値から1.5歩
 % single_stride_walker(1)                              % デフォルト初期値から1.5歩
-% 成功例　single_stride_passivewalker(1, [0, -0.1, 0, -0.35])
 
 function single_stride_walker(flag, z0_input)
 
@@ -80,8 +79,8 @@ if isempty(z0_input)
                 presets = {
                     [0.1, -0.1, 0.2, -0.2], '安定な初期値1';
                     [0.3, -0.3, 0.5, -0.1], '安定な初期値2';
-                    [0.05, -0.15, 0.35, -0.25], '固定点近傍1';
-                    [0.25, -0.25, 0.45, -0.05], '固定点近傍2';
+                    [0.0, -0.15, 0.0, -0.35], '揃え足歩行1';
+                    [-.01, -0.1, -.1, -0.3], '揃え足歩行2';
                     [0.4, -0.1, 0.6, -0.4], '不安定な初期値1';
                     [0.1, -0.5, 0.3, -0.6], '不安定な初期値2'
                 };
@@ -145,10 +144,33 @@ if isempty(z0_input)
     fprintf('\n');
 end
 
+% アニメーション保存オプション（初期値設定後、シミュレーション前）
+fprintf('\nアニメーションを保存しますか？\n');
+fprintf('1. 保存しない（表示のみ）\n');
+fprintf('2. GIFファイルとして保存\n');
+fprintf('3. AVIファイルとして保存\n');
+fprintf('4. 両方の形式で保存\n');
+save_choice = input('選択 (1-4): ');
+
+% ファイル名の設定
+if save_choice > 1
+    default_filename = sprintf('passive_walker_%s', datestr(now, 'yyyymmdd_HHMMSS'));
+    fprintf('\n保存ファイル名を入力してください（拡張子なし）\n');
+    fprintf('デフォルト: %s\n', default_filename);
+    filename_input = input('ファイル名: ', 's');
+    if isempty(filename_input)
+        save_filename = default_filename;
+    else
+        save_filename = filename_input;
+    end
+else
+    save_filename = '';
+end
+
 if flag == 1
     %% Garcia's simplest walker
     walker.M = 1000; walker.m = 1.0; walker.I = 0.00; walker.l = 1.0; walker.w = 0.0; 
-    walker.c = 1.0;  walker.r = 0.3; walker.g = 1.0; walker.gam = 0.009; 
+    walker.c = 1.0;  walker.r = 0.0; walker.g = 1.0; walker.gam = 0.009; 
     
     %%%% Initial State %%%%%
     % ユーザー指定の初期値
@@ -231,13 +253,15 @@ else
     fprintf('❌ 歩行が不安定です（角度が大きすぎます）\n');
 end
 
-%%%% アニメーション %%%%
+%%%% アニメーション（保存機能付き） %%%%
 fprintf('\n1.5ストライド（スイング脚追いつきまで）のアニメーションを表示します...\n');
-animate_single_stride(t_trajectory, z_trajectory, walker);
+animate_single_stride(t_trajectory, z_trajectory, walker, save_choice, save_filename);
 
 %%%% プロット %%%%
 fprintf('\n軌道をプロットします...\n');
 plot_single_stride(t_trajectory, z_trajectory, z0, z_final, zstar, z_midpoint);
+
+end  % メイン関数の終了
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% FUNCTIONS START HERE %%%%%%%%
@@ -478,8 +502,15 @@ sgtitle('1.5ストライド（スイング脚追いつき）の詳細解析')
 end
 
 %===================================================================
-function animate_single_stride(t_all, z_all, walker)
+function animate_single_stride(t_all, z_all, walker, save_choice, save_filename)
 %===================================================================
+% アニメーション関数（保存機能付き）
+
+% 引数チェック（後方互換性のため）
+if nargin < 4
+    save_choice = 1;  % デフォルトは保存しない
+    save_filename = '';
+end
 
 fps = 10;
 z_all_plot = [z_all(:,1) z_all(:,3) z_all(:,6) z_all(:,8)];
@@ -545,6 +576,22 @@ line('xdata',rampref(1,:),'ydata',rampref(2,:), 'linewidth', 2,'color','black');
 
 title('1.5ストライド（スイング脚追いつき）アニメーション', 'FontSize', 14)
 
+% GIF保存の準備
+if save_choice == 2 || save_choice == 4
+    gif_filename = [save_filename '.gif'];
+    fprintf('GIFファイルを保存中: %s\n', gif_filename);
+end
+
+% AVI保存の準備
+if save_choice == 3 || save_choice == 4
+    avi_filename = [save_filename '.avi'];
+    fprintf('AVIファイルを保存中: %s\n', avi_filename);
+    v = VideoWriter(avi_filename);
+    v.FrameRate = fps;
+    open(v);
+end
+
+% アニメーションループ
 for i=1:mm
     
    q1 = z(i,1); q2 = z(i,2); 
@@ -582,8 +629,40 @@ for i=1:mm
    end
    
    pause(0.1)
-   drawnow  
+   drawnow
+   
+   % フレームを保存
+   if save_choice > 1
+       frame = getframe(gcf);
+       
+       % GIF保存
+       if save_choice == 2 || save_choice == 4
+           im = frame2im(frame);
+           [imind,cm] = rgb2ind(im,256);
+           if i == 1
+               imwrite(imind,cm,gif_filename,'gif','Loopcount',inf,'DelayTime',1/fps);
+           else
+               imwrite(imind,cm,gif_filename,'gif','WriteMode','append','DelayTime',1/fps);
+           end
+       end
+       
+       % AVI保存
+       if save_choice == 3 || save_choice == 4
+           writeVideo(v,frame);
+       end
+   end
   
+end
+
+% AVIファイルを閉じる
+if save_choice == 3 || save_choice == 4
+    close(v);
+    fprintf('AVIファイル保存完了: %s\n', avi_filename);
+end
+
+% GIF保存完了メッセージ
+if save_choice == 2 || save_choice == 4
+    fprintf('GIFファイル保存完了: %s\n', gif_filename);
 end
 
 end
@@ -612,7 +691,6 @@ fprintf('Debug: t=%.4f, q1=%.4f, q2=%.4f, diff=%.6f\n', t, q1, q2, gstop);
 
 end
 
-% 以下、元のコードから必要な関数をコピー
 %===================================================================
 function zdot=single_stance(t,z,walker)  
 %===================================================================
@@ -703,7 +781,5 @@ vxh = (-l*cos(q1)-r)*u1;
 vyh = -l*sin(q1)*u1; 
 
 zplus = [q1 u1 q2 u2 TE xh vxh yh vyh];                     
-
-end
 
 end
