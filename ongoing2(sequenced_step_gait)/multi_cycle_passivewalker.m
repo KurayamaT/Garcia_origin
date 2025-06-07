@@ -159,23 +159,31 @@ function multi_cycle_passivewalker_original()
             switch correction_method
                 case 1
                     % エネルギー補償による補正
-                    if cycle_info.energy_loss < 0  % エネルギーが減少した場合
+                    % エネルギーが増加した場合、角速度を調整する必要がある
+                    if cycle_info.energy_loss > 0  % エネルギーが増加した場合
+                        % 角速度を減少させる
                         energy_compensation = sqrt(TE_initial / TE_final);
                     else
-                        energy_compensation = 1;
+                        % エネルギーが減少した場合は、元の角速度を維持
+                        energy_compensation = 1.0;
                     end
                     
-                    z_current = [z_final(1); 
+                    % 角度をわずかに調整して、次のステップで衝突が起きやすくする
+                    angle_adjustment = 0.05;  % 小さな角度調整
+                    
+                    z_current = [z_final(1) + angle_adjustment; 
                                 z0_original(2) * energy_compensation;
-                                z_final(3); 
+                                z_final(3) - angle_adjustment; 
                                 z0_original(4) * energy_compensation];
                     
                 case 2
                     % 固定倍率による補正
                     correction_factor = 1.1;
-                    z_current = [z_final(1); 
+                    angle_adjustment = 0.05;
+                    
+                    z_current = [z_final(1) + angle_adjustment; 
                                 z0_original(2) * correction_factor;
-                                z_final(3); 
+                                z_final(3) - angle_adjustment; 
                                 z0_original(4) * correction_factor];
                     
                 case 3
@@ -186,7 +194,7 @@ function multi_cycle_passivewalker_original()
                     z_current = [z_final(1); u1_corrected; z_final(3); u2_corrected];
             end
             
-            fprintf('補正後の角速度: u1=%.4f, u2=%.4f\n', z_current(2), z_current(4));
+            fprintf('補正後の状態: [%.4f, %.4f, %.4f, %.4f]\n', z_current);
             
             cycle_info.velocity_correction = norm([z_current(2) - z_final(2); 
                                                   z_current(4) - z_final(4)]);
@@ -212,7 +220,7 @@ function multi_cycle_passivewalker_original()
 end
 
 function animate_cycle_original(fig, t, z_all, walker, cycle_num, speed_factor)
-    % 元のコードのアニメーション形式を使用
+    % single_stride_passivewalker2.mと同じアニメーション形式を使用
     
     figure(fig);
     clf;
@@ -224,21 +232,17 @@ function animate_cycle_original(fig, t, z_all, walker, cycle_num, speed_factor)
     
     % アニメーション用データの準備
     fps = 10;
+    z_all_plot = [z_all(:,1) z_all(:,3) z_all(:,6) z_all(:,8)];
+    nn = size(z_all_plot,2);
     total_frames = round(t(end)*fps);
     t_anim = linspace(t(1), t(end), total_frames);
-    
-    % 補間
-    z_anim = zeros(total_frames, size(z_all, 2));
-    for i = 1:size(z_all, 2)
-        z_anim(:,i) = interp1(t, z_all(:,i), t_anim);
+    z = zeros(total_frames,nn);
+    for i=1:nn
+        z(:,i) = interp1(t, z_all_plot(:,i), t_anim);
     end
     
     % ウィンドウ設定
-    if size(z_all, 2) >= 8
-        min_xh = min(z_all(:,6)); max_xh = max(z_all(:,6));
-    else
-        min_xh = -2; max_xh = 2;
-    end
+    min_xh = min(z(:,3)); max_xh = max(z(:,3)); 
     window_xmin = min_xh - 1*l; window_xmax = max_xh + 1*l;
     window_ymin = -0.1; window_ymax = 1.1*(l+r);
     
@@ -246,14 +250,46 @@ function animate_cycle_original(fig, t, z_all, walker, cycle_num, speed_factor)
     subplot(1,2,1);
     axis('equal')
     axis([window_xmin window_xmax window_ymin window_ymax])
-    title(sprintf('サイクル %d - 歩行アニメーション', cycle_num));
-    xlabel('水平位置');
-    ylabel('垂直位置');
-    grid on;
-    hold on;
+    axis off
+    set(gcf,'Color',[1,1,1])
     
-    % 地面
-    plot([window_xmin window_xmax], [0 0], 'k-', 'LineWidth', 2);
+    mm = size(z,1);
+    
+    % 軌跡を描画するための準備
+    trajectory_x = z(:,3);
+    trajectory_y = z(:,4);
+    
+    lines_for_feet = 4;
+    counter = 2 + 2*lines_for_feet;
+    th = 0.25;
+    
+    %%% create object for hinge %%%%%
+    hingepic=line('xdata',0,'ydata',0, 'marker','.','markersize',[20], ...
+              'color','black');
+    
+    %%% create trajectory line %%%
+    trajpic=line('xdata',[],'ydata',[], 'linewidth', 1, 'color','green', 'linestyle', '--');
+       
+    %%%% create object for legs and feet %%%%
+    barref = [0 0; 0 -1];
+    y = [0;-1];
+    O = [0; 0];
+    
+    %%%% legs in red %%%      
+    for p = 1:2
+        barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 3, 'color','red');
+    end
+    
+    %%% feet in blue %%%
+    for p = 3:counter
+        barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 2, 'color','blue');
+    end
+    
+    %%%% create ramp %%%%
+    rampref=[window_xmin window_xmax ; 0 0];
+    line('xdata',rampref(1,:),'ydata',rampref(2,:), 'linewidth', 2,'color','black');
+    
+    title(sprintf('サイクル %d - 歩行アニメーション', cycle_num), 'FontSize', 14)
     
     % サブプロット2: 状態変数
     subplot(1,2,2);
@@ -265,26 +301,47 @@ function animate_cycle_original(fig, t, z_all, walker, cycle_num, speed_factor)
     % アニメーションループ
     dt_anim = 0.1 / speed_factor;
     
-    for i = 1:length(t_anim)
+    for i = 1:mm
         % 左側：歩行アニメーション
         subplot(1,2,1);
-        cla;
-        plot([window_xmin window_xmax], [0 0], 'k-', 'LineWidth', 2);
-        hold on;
         
-        % 現在の状態
-        q1 = z_anim(i,1); q2 = z_anim(i,3);
+        % z_all_plot = [z_all(:,1) z_all(:,3) z_all(:,6) z_all(:,8)]
+        % つまり z(:,1)=q1, z(:,2)=q2, z(:,3)=xh, z(:,4)=yh
+        q1 = z(i,1); q2 = z(i,2); 
+        xh = z(i,3); yh = z(i,4);  
         
-        if size(z_anim, 2) >= 8
-            xh = z_anim(i,6); yh = z_anim(i,8);
-        else
-            % 腰の位置を計算
-            xh = -l*sin(q1) + t_anim(i) * 0.2;
-            yh = l*cos(q1) + r;
+        %%% hinge coordinates
+        hinge=[xh; yh];   
+        
+        %%% leg coordinates
+        % A(1) = q1 (スタンス脚の角度)
+        % A(2) = -(q2-q1) (スイング脚の相対角度の負値)
+        A = [q1 -(q2-q1)];
+        
+        for p = 1:2
+            bar(:,:,p) = [hinge, hinge] + (l+r)*R(A(p))*barref;
+            center(:,:,p) = hinge + l*R(A(p))*y;
         end
         
-        % ウォーカーを描画
-        draw_walker_original(q1, q2, xh, yh, walker);
+        %%%% feet coordinates
+        B = [-th -2*th; 0 -th; th 0; 2*th th];
+        
+        incr = 3;
+        for p=1:2
+            for q=1:4
+                C = A(p) + B(q,:);
+                bar(:,:,incr) = [center(:,:,p), center(:,:,p)] + r*R(C(1))*[O,y] + r*R(C(2))*[y, O]; 
+                incr = incr + 1;
+            end
+        end
+              
+        %%% animate now    
+        set(hingepic,'xdata',hinge(1),'ydata',hinge(2));
+        set(trajpic,'xdata',trajectory_x(1:i),'ydata',trajectory_y(1:i));
+        
+        for p=1:counter
+            set(barpic(p),'xdata',bar(1,:,p),'ydata',bar(2,:,p));
+        end
         
         % 右側：状態変数のプロット
         subplot(1,2,2);
@@ -298,8 +355,8 @@ function animate_cycle_original(fig, t, z_all, walker, cycle_num, speed_factor)
         plot(t(idx), z_all(idx,4), 'r--', 'LineWidth', 1, 'DisplayName', 'u2');
         
         % 現在位置をマーク
-        plot(t_anim(i), z_anim(i,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
-        plot(t_anim(i), z_anim(i,3), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+        plot(t_anim(i), z(i,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+        plot(t_anim(i), z(i,2), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
         
         xlim([t(1) t(end)]);
         ylim([-1 1]);
@@ -311,7 +368,7 @@ function animate_cycle_original(fig, t, z_all, walker, cycle_num, speed_factor)
 end
 
 function animate_all_cycles_original(fig, all_times, all_extended_states, walker, speed_factor)
-    % 全サイクルの連続アニメーション
+    % 全サイクルの連続アニメーション（single_stride_passivewalker2.m形式）
     
     figure(fig);
     clf;
@@ -329,71 +386,122 @@ function animate_all_cycles_original(fig, all_times, all_extended_states, walker
         z_all = [z_all; all_extended_states{i}];
     end
     
-    % アニメーション設定
-    if size(z_all, 2) >= 8
-        min_xh = min(z_all(:,6)); max_xh = max(z_all(:,6));
-    else
-        min_xh = -2; max_xh = 2*length(all_times);
+    % アニメーション用データの準備
+    fps = 10;
+    z_all_plot = [z_all(:,1) z_all(:,3) z_all(:,6) z_all(:,8)];
+    nn = size(z_all_plot,2);
+    total_frames = round(t_all(end)*fps);
+    t = linspace(t_all(1), t_all(end), total_frames);
+    z = zeros(total_frames,nn);
+    for i=1:nn
+        z(:,i) = interp1(t_all, z_all_plot(:,i), t);
     end
+    
+    % ウィンドウ設定
+    min_xh = min(z(:,3)); max_xh = max(z(:,3)); 
     window_xmin = min_xh - 1*l; window_xmax = max_xh + 1*l;
     window_ymin = -0.1; window_ymax = 1.1*(l+r);
     
     subplot(1,2,1);
     axis('equal')
     axis([window_xmin window_xmax window_ymin window_ymax])
-    title('全サイクル 歩行アニメーション');
-    xlabel('水平位置');
-    ylabel('垂直位置');
-    grid on;
+    axis off
+    set(gcf,'Color',[1,1,1])
     
+    mm = size(z,1);
+    
+    % 軌跡を描画するための準備
+    trajectory_x = z(:,3);
+    trajectory_y = z(:,4);
+    
+    lines_for_feet = 4;
+    counter = 2 + 2*lines_for_feet;
+    th = 0.25;
+    
+    %%% create object for hinge %%%%%
+    hingepic=line('xdata',0,'ydata',0, 'marker','.','markersize',[20], ...
+              'color','black');
+    
+    %%% create trajectory line %%%
+    trajpic=line('xdata',[],'ydata',[], 'linewidth', 1, 'color','green', 'linestyle', '--');
+       
+    %%%% create object for legs and feet %%%%
+    barref = [0 0; 0 -1];
+    y = [0;-1];
+    O = [0; 0];
+    
+    %%%% legs in red %%%      
+    for p = 1:2
+        barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 3, 'color','red');
+    end
+    
+    %%% feet in blue %%%
+    for p = 3:counter
+        barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 2, 'color','blue');
+    end
+    
+    %%%% create ramp %%%%
+    rampref=[window_xmin window_xmax ; 0 0];
+    line('xdata',rampref(1,:),'ydata',rampref(2,:), 'linewidth', 2,'color','black');
+    
+    title('全サイクル 歩行アニメーション', 'FontSize', 14)
+    
+    % サブプロット2: 状態変数
     subplot(1,2,2);
     title('全サイクル 状態変数');
     xlabel('時間 [s]');
     grid on;
+    hold on;
     
     % アニメーションループ
-    fps = 10;
     dt_anim = 0.1 / speed_factor;
-    t_anim = t_all(1):dt_anim:t_all(end);
     
-    hip_trajectory = [];
-    
-    for i = 1:length(t_anim)
-        current_t = t_anim(i);
-        
-        % 補間して現在の状態を取得
-        current_z = zeros(1, size(z_all, 2));
-        for j = 1:size(z_all, 2)
-            current_z(j) = interp1(t_all, z_all(:,j), current_t);
-        end
-        
+    for i = 1:mm
         % 左側：歩行アニメーション
         subplot(1,2,1);
-        cla;
-        plot([window_xmin window_xmax], [0 0], 'k-', 'LineWidth', 2);
-        hold on;
         
-        q1 = current_z(1); q2 = current_z(3);
+        % z_all_plot = [z_all(:,1) z_all(:,3) z_all(:,6) z_all(:,8)]
+        % つまり z(:,1)=q1, z(:,2)=q2, z(:,3)=xh, z(:,4)=yh
+        q1 = z(i,1); q2 = z(i,2); 
+        xh = z(i,3); yh = z(i,4);  
         
-        if size(current_z, 2) >= 8
-            xh = current_z(6); yh = current_z(8);
-        else
-            xh = -l*sin(q1) + current_t * 0.2;
-            yh = l*cos(q1) + r;
+        %%% hinge coordinates
+        hinge=[xh; yh];   
+        
+        %%% leg coordinates
+        % A(1) = q1 (スタンス脚の角度)
+        % A(2) = -(q2-q1) (スイング脚の相対角度の負値)
+        A = [q1 -(q2-q1)];
+        
+        for p = 1:2
+            bar(:,:,p) = [hinge, hinge] + (l+r)*R(A(p))*barref;
+            center(:,:,p) = hinge + l*R(A(p))*y;
         end
         
-        % 腰の軌跡
-        hip_trajectory = [hip_trajectory; xh, yh];
-        if size(hip_trajectory, 1) > 1
-            plot(hip_trajectory(:,1), hip_trajectory(:,2), 'g--', 'LineWidth', 1);
-        end
+        %%%% feet coordinates
+        B = [-th -2*th; 0 -th; th 0; 2*th th];
         
-        draw_walker_original(q1, q2, xh, yh, walker);
+        incr = 3;
+        for p=1:2
+            for q=1:4
+                C = A(p) + B(q,:);
+                bar(:,:,incr) = [center(:,:,p), center(:,:,p)] + r*R(C(1))*[O,y] + r*R(C(2))*[y, O]; 
+                incr = incr + 1;
+            end
+        end
+              
+        %%% animate now    
+        set(hingepic,'xdata',hinge(1),'ydata',hinge(2));
+        set(trajpic,'xdata',trajectory_x(1:i),'ydata',trajectory_y(1:i));
+        
+        for p=1:counter
+            set(barpic(p),'xdata',bar(1,:,p),'ydata',bar(2,:,p));
+        end
         
         % 右側：状態変数
         subplot(1,2,2);
         cla;
-        idx = find(t_all <= current_t);
+        idx = find(t_all <= t(i));
         plot(t_all(idx), z_all(idx,1), 'b-', 'LineWidth', 2);
         plot(t_all(idx), z_all(idx,3), 'r-', 'LineWidth', 2);
         plot(t_all(idx), z_all(idx,2), 'b--', 'LineWidth', 1);
@@ -405,33 +513,6 @@ function animate_all_cycles_original(fig, all_times, all_extended_states, walker
         drawnow;
         pause(dt_anim);
     end
-end
-
-function draw_walker_original(q1, q2, xh, yh, walker)
-    % 元のコードの描画スタイルに基づくウォーカー描画
-    
-    l = walker.l;
-    r = walker.r;
-    
-    % スタンス脚（スタンス脚の足は原点）
-    stance_foot_x = xh + l*sin(q1) + r*q1;
-    stance_foot_y = 0;
-    
-    % スイング脚
-    swing_foot_x = xh + l*sin(q2) + r*(q2-q1);
-    swing_foot_y = yh - l*cos(q2) - r;
-    
-    % 脚を描画
-    plot([stance_foot_x, xh], [stance_foot_y, yh], 'b-', 'LineWidth', 3);  % スタンス脚
-    plot([xh, swing_foot_x], [yh, swing_foot_y], 'r-', 'LineWidth', 3);    % スイング脚
-    
-    % 関節と足を描画
-    plot(xh, yh, 'ko', 'MarkerSize', 10, 'MarkerFaceColor', 'k');  % 腰
-    plot(stance_foot_x, stance_foot_y, 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');  % スタンス足
-    plot(swing_foot_x, swing_foot_y, 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');  % スイング足
-    
-    % 進行方向を示す矢印
-    quiver(xh, yh+0.2, 0.2, 0, 'k', 'LineWidth', 2);
 end
 
 function visualize_results_original(all_times, all_trajectories, all_extended_states, cycle_data, z0_original)
@@ -818,4 +899,10 @@ vyh = -l*sin(q1)*u1;
 
 zplus = [q1 u1 q2 u2 TE xh vxh yh vyh];                     
 
+end
+
+%===================================================================
+function rotation = R(A)
+%===================================================================
+rotation = [cos(A) -sin(A); sin(A) cos(A)];
 end
