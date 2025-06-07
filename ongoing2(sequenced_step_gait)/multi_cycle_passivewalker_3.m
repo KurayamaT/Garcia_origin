@@ -642,22 +642,22 @@ function display_summary(cycle_data, z0_original)
     fprintf('\n=== シミュレーション完了 ===\n');
 end
 
-% animate_cycle_original_fixed関数の完全修正版
+% animate_cycle_original_fixed関数の修正版
 function animate_cycle_original_fixed(fig, t, z_all, walker, cycle_num, speed_factor)
-    % サイクルごとのアニメーション（色の入れ替わりを防ぐ修正版）
-    
+    % サイクルごとのアニメーション（物理的な脚の色を一貫して保持）
+
     if ~isvalid(fig)
         return;
     end
-    
+
     figure(fig);
     clf;
-    
+
     % パラメータ
     M = walker.M;  m = walker.m; I = walker.I;   
     l = walker.l;  c = walker.c; w = walker.w;   
     r = walker.r;  g = walker.g; gam = walker.gam;
-    
+
     % アニメーション用データの準備
     fps = 10;
     if size(z_all, 2) >= 8
@@ -666,7 +666,7 @@ function animate_cycle_original_fixed(fig, t, z_all, walker, cycle_num, speed_fa
         hip_x = cumsum([0; diff(t)] .* 0.5);
         z_all_plot = [z_all(:,1) z_all(:,3) hip_x ones(size(z_all,1),1)*l];
     end
-    
+
     nn = size(z_all_plot,2);
     total_frames = round(t(end)*fps);
     if total_frames < 1
@@ -674,7 +674,7 @@ function animate_cycle_original_fixed(fig, t, z_all, walker, cycle_num, speed_fa
     end
     t_anim = linspace(t(1), t(end), total_frames);
     z = zeros(total_frames,nn);
-    
+
     for i=1:nn
         try
             z(:,i) = interp1(t, z_all_plot(:,i), t_anim, 'linear', 'extrap');
@@ -682,100 +682,107 @@ function animate_cycle_original_fixed(fig, t, z_all, walker, cycle_num, speed_fa
             z(:,i) = z_all_plot(end,i) * ones(total_frames, 1);
         end
     end
-    
+
     % ウィンドウ設定
     min_xh = min(z(:,3)); max_xh = max(z(:,3)); 
     window_xmin = min_xh - 1*l; window_xmax = max_xh + 1*l;
     window_ymin = -0.1; window_ymax = 1.1*(l+r);
-    
+
     % サブプロット1: アニメーション
     subplot(1,2,1);
     axis('equal')
     axis([window_xmin window_xmax window_ymin window_ymax])
     axis off
     set(gcf,'Color',[1,1,1])
-    
+
     mm = size(z,1);
-    
+
     % 軌跡を描画するための準備
     trajectory_x = z(:,3);
     trajectory_y = z(:,4);
-    
+
     lines_for_feet = 4;
     counter = 2 + 2*lines_for_feet;
     th = 0.25;
-    
+
     %%% create object for hinge %%%%%
     hingepic=line('xdata',0,'ydata',0, 'marker','.','markersize',[20], ...
               'color','black');
-    
+
     %%% create trajectory line %%%
     trajpic=line('xdata',[],'ydata',[], 'linewidth', 1, 'color','green', 'linestyle', '--');
-       
+
     %%%% create object for legs and feet %%%%
     barref = [0 0; 0 -1];
     y = [0;-1];
     O = [0; 0];
+
+    % === 物理的な脚の色を固定 ===
+    % 右脚は常に赤、左脚は常に青として固定
+    right_leg_color = 'red';
+    left_leg_color = 'blue';
     
-    % === 重要な修正: サイクル番号に基づいて色を決定 ===
-    % 奇数サイクル: q1=赤(スタンス), q2=青(スイング)
-    % 偶数サイクル: q1=青(スタンス), q2=赤(スイング)
-    if mod(cycle_num, 2) == 1
-        % 奇数サイクル
-        leg_colors = {'red', 'blue'};
-    else
-        % 偶数サイクル（色を入れ替え）
-        leg_colors = {'blue', 'red'};
-    end
-    
-    %%%% legs with fixed colors %%%      
-    for p = 1:2
-        barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 3, 'color',leg_colors{p});
-    end
-    
+    % 脚オブジェクトの初期化（色は後で決定）
+    barpic(1) = line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 3);
+    barpic(2) = line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 3);
+
     %%% feet in blue %%%
     for p = 3:counter
         barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 2, 'color','blue');
     end
-    
+
     %%%% create ramp %%%%
     rampref=[window_xmin window_xmax ; 0 0];
     line('xdata',rampref(1,:),'ydata',rampref(2,:), 'linewidth', 2,'color','black');
-    
-    title(sprintf('サイクル %d - 歩行アニメーション', cycle_num), 'FontSize', 14)
-    
+
+    title(sprintf('サイクル %d - 歩行アニメーション（物理脚色固定）', cycle_num), 'FontSize', 14)
+
     % サブプロット2: 状態変数
     subplot(1,2,2);
-    title('角度と角速度');
+    title('角度と角速度（物理脚色対応）');
     xlabel('時間 [s]');
     grid on;
     hold on;
-    
+
     % アニメーションループ
     dt_anim = 0.1 / speed_factor;
-    
+
     for i = 1:mm
         try
             % 左側：歩行アニメーション
             subplot(1,2,1);
-            
+
             q1 = z(i,1); q2 = z(i,2); 
             xh = z(i,3); yh = z(i,4);  
-            
+
             %%% hinge coordinates
             hinge=[xh; yh];   
-            
+
             %%% leg coordinates
             A = [q1 -(q2-q1)];
+
+            % === 物理的な脚の判定（角度の大小で判定） ===
+            % より右側（大きい角度）にある脚を右脚、左側（小さい角度）にある脚を左脚とする
+            if q1 > -(q2-q1)  % q1の方が右側
+                q1_color = right_leg_color;  % q1 = 右脚
+                q2_color = left_leg_color;   % q2 = 左脚
+            else  % q2の方が右側
+                q1_color = left_leg_color;   % q1 = 左脚
+                q2_color = right_leg_color;  % q2 = 右脚
+            end
             
+            % 脚の色を更新
+            set(barpic(1), 'color', q1_color);
+            set(barpic(2), 'color', q2_color);
+
             for p = 1:2
                 bar(:,:,p) = [hinge, hinge] + (l+r)*R(A(p))*barref;
                 center(:,:,p) = hinge + l*R(A(p))*y;
             end
-            
+
             %%%% feet coordinates
             B = [-th -2*th; 0 -th; th 0; 2*th th];
-            
+
             incr = 3;
             for p=1:2
                 for q=1:4
@@ -784,47 +791,46 @@ function animate_cycle_original_fixed(fig, t, z_all, walker, cycle_num, speed_fa
                     incr = incr + 1;
                 end
             end
-                  
+
             %%% animate now    
             set(hingepic,'xdata',hinge(1),'ydata',hinge(2));
             set(trajpic,'xdata',trajectory_x(1:i),'ydata',trajectory_y(1:i));
-            
-            % 脚の位置を更新（色は固定のまま）
+
+            % 脚の位置を更新
             for p=1:2
                 set(barpic(p),'xdata',bar(1,:,p),'ydata',bar(2,:,p));
             end
-            
+
             % 足の部分
             for p=3:counter
                 set(barpic(p),'xdata',bar(1,:,p),'ydata',bar(2,:,p));
             end
-                        
-            % 右側：状態変数のプロット（色もサイクルに応じて調整）
+
+            % 右側：状態変数のプロット（物理的な脚の色に対応）
             subplot(1,2,2);
             cla;
-            
-            % これまでの軌跡
+
             idx = find(t <= t_anim(i));
             if ~isempty(idx)
-                plot(t(idx), z_all(idx,1), '-', 'Color', leg_colors{1}, 'LineWidth', 2, 'DisplayName', 'q1');
-                plot(t(idx), z_all(idx,3), '-', 'Color', leg_colors{2}, 'LineWidth', 2, 'DisplayName', 'q2');
-                plot(t(idx), z_all(idx,2), '--', 'Color', leg_colors{1}, 'LineWidth', 1, 'DisplayName', 'u1');
-                plot(t(idx), z_all(idx,4), '--', 'Color', leg_colors{2}, 'LineWidth', 1, 'DisplayName', 'u2');
-                
+                plot(t(idx), z_all(idx,1), '-', 'Color', q1_color, 'LineWidth', 2, 'DisplayName', 'q1');
+                plot(t(idx), z_all(idx,3), '-', 'Color', q2_color, 'LineWidth', 2, 'DisplayName', 'q2');
+                plot(t(idx), z_all(idx,2), '--', 'Color', q1_color, 'LineWidth', 1, 'DisplayName', 'u1');
+                plot(t(idx), z_all(idx,4), '--', 'Color', q2_color, 'LineWidth', 1, 'DisplayName', 'u2');
+
                 % 現在位置をマーク
                 if i <= length(z)
-                    plot(t_anim(i), z(i,1), 'o', 'Color', leg_colors{1}, 'MarkerSize', 8, 'MarkerFaceColor', leg_colors{1});
-                    plot(t_anim(i), z(i,2), 'o', 'Color', leg_colors{2}, 'MarkerSize', 8, 'MarkerFaceColor', leg_colors{2});
+                    plot(t_anim(i), z(i,1), 'o', 'Color', q1_color, 'MarkerSize', 8, 'MarkerFaceColor', q1_color);
+                    plot(t_anim(i), z(i,2), 'o', 'Color', q2_color, 'MarkerSize', 8, 'MarkerFaceColor', q2_color);
                 end
             end
-            
+
             xlim([t(1) t(end)]);
             ylim([-1 1]);
             legend('Location', 'best');
-            
+
             drawnow;
             pause(dt_anim);
-            
+
         catch me
             fprintf('アニメーションフレーム %d でエラー: %s\n', i, me.message);
             continue;
@@ -832,9 +838,8 @@ function animate_cycle_original_fixed(fig, t, z_all, walker, cycle_num, speed_fa
     end
 end
 
-% animate_all_cycles_original_fixed関数の完全修正版
 function animate_all_cycles_original_fixed(fig, all_times, all_extended_states, walker, speed_factor)
-    % 全サイクルの連続アニメーション（色の入れ替わりを防ぐ修正版）
+    % 全サイクルの連続アニメーション（物理的な脚の色を一貫して保持）
     
     if ~isvalid(fig)
         return;
@@ -903,14 +908,11 @@ function animate_all_cycles_original_fixed(fig, all_times, all_extended_states, 
     end
     t = linspace(t_all(1), t_all(end), total_frames);
     z = zeros(total_frames,nn);
-    cycle_at_frame = zeros(total_frames, 1);  % 各フレームのサイクル番号
     
     try
         for i=1:nn
             z(:,i) = interp1(t_all, z_all_plot(:,i), t, 'linear', 'extrap');
         end
-        % 各フレームがどのサイクルに属するかを計算
-        cycle_at_frame = interp1(t_all, cycle_labels, t, 'nearest', 'extrap');
     catch me
         fprintf('補間エラー: %s\n', me.message);
         return;
@@ -949,7 +951,11 @@ function animate_all_cycles_original_fixed(fig, all_times, all_extended_states, 
     y = [0;-1];
     O = [0; 0];
     
-    % 初期の脚オブジェクト作成（色は後で設定）
+    % === 物理的な脚の色を固定 ===
+    right_leg_color = 'red';
+    left_leg_color = 'blue';
+    
+    % 脚オブジェクトの初期化
     for p = 1:2
         barpic(p)=line('xdata',barref(1,:),'ydata',barref(2,:),'linewidth', 3);
     end
@@ -963,11 +969,11 @@ function animate_all_cycles_original_fixed(fig, all_times, all_extended_states, 
     rampref=[window_xmin window_xmax ; 0 0];
     line('xdata',rampref(1,:),'ydata',rampref(2,:), 'linewidth', 2,'color','black');
     
-    title('全サイクル 歩行アニメーション', 'FontSize', 14)
+    title('全サイクル 歩行アニメーション（物理脚色固定）', 'FontSize', 14)
     
     % サブプロット2: 状態変数
     subplot(1,2,2);
-    title('全サイクル 状態変数');
+    title('全サイクル 状態変数（物理脚色対応）');
     xlabel('時間 [s]');
     grid on;
     hold on;
@@ -975,37 +981,26 @@ function animate_all_cycles_original_fixed(fig, all_times, all_extended_states, 
     % アニメーションループ
     dt_anim = 0.1 / speed_factor;
     
-    % 現在のサイクル番号を記録
-    current_cycle = 1;
-    
     for i = 1:mm
         try
-            % 現在のフレームのサイクル番号を取得
-            frame_cycle = round(cycle_at_frame(i));
-            
-            % サイクルが変わったら色を更新
-            if frame_cycle ~= current_cycle
-                current_cycle = frame_cycle;
-            end
-            
-            % サイクル番号に基づいて色を決定
-            if mod(current_cycle, 2) == 1
-                % 奇数サイクル
-                leg_colors = {'red', 'blue'};
-            else
-                % 偶数サイクル
-                leg_colors = {'blue', 'red'};
-            end
-            
-            % 脚の色を更新
-            set(barpic(1), 'color', leg_colors{1});
-            set(barpic(2), 'color', leg_colors{2});
-            
             % 左側：歩行アニメーション
             subplot(1,2,1);
             
             q1 = z(i,1); q2 = z(i,2); 
             xh = z(i,3); yh = z(i,4);  
+            
+            % === 物理的な脚の判定（角度の大小で判定） ===
+            if q1 > -(q2-q1)  % q1の方が右側
+                q1_color = right_leg_color;  % q1 = 右脚
+                q2_color = left_leg_color;   % q2 = 左脚
+            else  % q2の方が右側
+                q1_color = left_leg_color;   % q1 = 左脚
+                q2_color = right_leg_color;  % q2 = 右脚
+            end
+            
+            % 脚の色を更新
+            set(barpic(1), 'color', q1_color);
+            set(barpic(2), 'color', q2_color);
             
             %%% hinge coordinates
             hinge=[xh; yh];   
@@ -1044,31 +1039,27 @@ function animate_all_cycles_original_fixed(fig, all_times, all_extended_states, 
                 set(barpic(p),'xdata',bar(1,:,p),'ydata',bar(2,:,p));
             end
                         
-            % 右側：状態変数（現在のサイクルの色を使用）
+            % 右側：状態変数（物理的な脚の色に対応）
             subplot(1,2,2);
             cla;
+            
             idx = find(t_all <= t(i));
             if ~isempty(idx)
-                % 各サイクルごとに色を変えてプロット
-                for cyc = 1:max(cycle_labels)
-                    cyc_idx = idx(cycle_labels(idx) == cyc);
-                    if ~isempty(cyc_idx)
-                        if mod(cyc, 2) == 1
-                            cyc_colors = {'red', 'blue'};
-                        else
-                            cyc_colors = {'blue', 'red'};
-                        end
-                        
-                        plot(t_all(cyc_idx), z_all(cyc_idx,1), '-', 'Color', cyc_colors{1}, 'LineWidth', 2);
-                        plot(t_all(cyc_idx), z_all(cyc_idx,3), '-', 'Color', cyc_colors{2}, 'LineWidth', 2);
-                        plot(t_all(cyc_idx), z_all(cyc_idx,2), '--', 'Color', cyc_colors{1}, 'LineWidth', 1);
-                        plot(t_all(cyc_idx), z_all(cyc_idx,4), '--', 'Color', cyc_colors{2}, 'LineWidth', 1);
-                    end
+                plot(t_all(idx), z_all(idx,1), '-', 'Color', q1_color, 'LineWidth', 2, 'DisplayName', 'q1');
+                plot(t_all(idx), z_all(idx,3), '-', 'Color', q2_color, 'LineWidth', 2, 'DisplayName', 'q2');
+                plot(t_all(idx), z_all(idx,2), '--', 'Color', q1_color, 'LineWidth', 1, 'DisplayName', 'u1');
+                plot(t_all(idx), z_all(idx,4), '--', 'Color', q2_color, 'LineWidth', 1, 'DisplayName', 'u2');
+
+                % 現在位置をマーク
+                if i <= length(z)
+                    plot(t(i), z(i,1), 'o', 'Color', q1_color, 'MarkerSize', 8, 'MarkerFaceColor', q1_color);
+                    plot(t(i), z(i,2), 'o', 'Color', q2_color, 'MarkerSize', 8, 'MarkerFaceColor', q2_color);
                 end
             end
             
             xlim([t_all(1) t_all(end)]);
             ylim([-1 1]);
+            legend('Location', 'best');
             
             drawnow;
             pause(dt_anim);
@@ -1079,6 +1070,7 @@ function animate_all_cycles_original_fixed(fig, all_times, all_extended_states, 
         end
     end
 end
+
 
 
 % === 以下、元のコードと完全に同じ物理モデル関数を使用 ===
